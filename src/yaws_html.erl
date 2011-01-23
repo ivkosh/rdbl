@@ -56,10 +56,11 @@ parse([{end_tag,T1,[],L1}|Tokens], CTag = {T2,_A,L2}, Stack, Acc) ->
         leaf -> %% ignore
             parse(Tokens, CTag, Stack, Acc);
         node ->
-            Msg = lists:flatten(io_lib:format(
-                                  "expected '</~p>'  on line ~p, start "
-                                  "tag at line: ~p", [T2,L1,L2])),
-            {error, Msg}
+			Tokens %MRG TODO: корректно ли так
+%            Msg = lists:flatten(io_lib:format(
+%                                  "expected '</~p>'  on line ~p, start "
+%                                  "tag at line: ~p", [T2,L1,L2])),
+%            {error, Msg}
     end;
 
 parse([{data, Data, _Line}|Tokens], CTag, Stack, Acc) ->
