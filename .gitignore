@@ -1,0 +1,5 @@
+.*.swp
+*.beam
+*.tbl
+log/*
+ebin/*
