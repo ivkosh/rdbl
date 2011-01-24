@@ -59,6 +59,17 @@ repl_el(Key, NewKey, NewAttr, {E, A, R}) -> {E, A, repl_el(Key, NewKey, NewAttr,
 repl_el(_, _, _, []) -> [];
 repl_el(Key, NewKey, NewAttr, [H|T]) -> [repl_el(Key, NewKey, NewAttr, H) | repl_el(Key, NewKey, NewAttr, T)]. % processing list recursively
 
+% HTML tag attrib with func:
+% example: repl_el(<<"br">>, fun()->...end. HtmlTree) -> HtmlTree
+% fun(AttrList) -> ModifiedAttrList
+%
+repl_el_attr_f(_K, _Func, NodeIn) when is_binary(NodeIn) -> NodeIn;
+repl_el_attr_f(_K, _Func, {comment, _}) -> []; % dropping comments
+repl_el_attr_f(Key, Func, {Key, Attr, Rest}) -> {Key, Func(Attr), repl_el_attr_f(Key, Func, Rest)}; % Key found changing and processing subtree
+repl_el_attr_f(Key, Func, {E, A, R}) -> {E, A, repl_el_attr_f(Key, Func, R)}; % continue to subtree
+repl_el_attr_f(_, _, []) -> [];
+repl_el_attr_f(Key, Func, [H|T]) -> [repl_el_attr_f(Key, Func, H) | repl_el_attr_f(Key, Func, T)]. % processing list recursively
+
 % addreftree
 addref_el(NodeIn) when is_binary(NodeIn) -> NodeIn;
 addref_el({comment, _}) -> []; % dropping comments
