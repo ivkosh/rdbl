@@ -1,6 +1,6 @@
 -module(t).
 
--export([go/0, go/1, go/2, go1/2, find_el/2, rm_el/2, repl_el/3, repl_el/4, go_repl/3]).
+-export([go/0, go/1, go/2, go1/2, find_el/2, rm_el/2, repl_el/3, repl_el/4, go_repl/3, rm_brbr/1]).
 -export([clean_html_tree/1, find_first_el/2, rm_list_el/2, addref_el/1, rmref_el/1]).
 -export([simplify_page/1, fetch_page/1, simplify_page/2]).
 -export([goyaws/1]).
@@ -41,6 +41,15 @@ rm_el(Key, {Key, _, _}) -> []; % Key found, dropping subtree
 rm_el(Key, {E, A, R}) -> {E, A, rm_el(Key, R)}; % continue to subtree
 rm_el(_, []) -> [];
 rm_el(Key, [H|T]) -> [rm_el(Key, H) | rm_el(Key, T)]. % processing list recursively
+
+% заменяем <br><br> на <p>
+% FIXME: что делать если подряд идет больше двух <br>? как их заменить на один <p>?
+rm_brbr( NodeIn) when is_binary(NodeIn) -> NodeIn;
+rm_brbr( {comment, _}) -> []; % dropping comments
+rm_brbr({E, A, R}) -> {E, A, rm_brbr(R)}; % continue to subtree
+rm_brbr([]) -> [];
+rm_brbr([{<<"br">>,_,_},{<<"br">>,_,_}|T]) -> [{<<"p">>,[],[]} | rm_brbr(T)]; % processing list recursively
+rm_brbr([H|T]) -> [rm_brbr(H) | rm_brbr(T)]. % processing list recursively
 
 % TODO: неэфективно - дерево пробегается столько раз, какова длина списка ключей.
 % переписать rm_list_el чтобы он мог работать со списком Key и выкидывать все за один проход
@@ -90,8 +99,10 @@ rmref_el([H|T]) -> [rmref_el(H) | rmref_el(T)]. % processing list recursively
 
 clean_html_tree(Tree) -> % prepDocument in readability.js
 	% TODO: add: find max <frame> in frameset and use it as document
-	rm_list_el([<<"style">>, <<"link">>, <<"script">>, <<"noscript">>,
-		<<"form">>, <<"object">>, <<"iframe">>], Tree).  % h1, h2?
+	rm_brbr( % заменяем <br><br> на <p>
+		rm_list_el([<<"style">>, <<"link">>, <<"script">>, <<"noscript">>,
+			<<"form">>, <<"object">>, <<"iframe">>], Tree)
+	).  % h1, h2?
 	% add more clean-up calls if needed
 
 
