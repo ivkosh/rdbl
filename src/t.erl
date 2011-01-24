@@ -174,5 +174,25 @@ go1(What, Where) ->
 	Out = find_el(What, HtmlTree, []),
 	{Out, length(Out)}.
 
+%% abs url inside the same server ej: /img/image.png    
+full_url({Root, _Context}, ComponentUrl=[$/|_]) -> Root ++ ComponentUrl;
+
+%% full url ej: http://other.com/img.png
+full_url({_Root, _Context}, ComponentUrl="http://"++_)  -> ComponentUrl;
+full_url({_Root, _Context}, ComponentUrl="https://"++_) -> ComponentUrl;
+full_url({_Root, _Context}, ComponentUrl="ftp://"++_)   -> ComponentUrl;
+
+% everything else is considerer a relative path.. obviously its wrong (../img) 
+full_url({Root, Context}, ComponentUrl) ->
+    Root ++ Context ++ "/" ++ ComponentUrl.
+
+% returns the  domain, and current context path. 
+% url_context("http://www.some.domain.com/content/index.html)
+%      -> {"http://www.some.domain.com", "/content"}
+url_context(URL) ->
+    {Proto, _, Root, _Port, Path, _Query} = http_uri:parse(URL), 
+    Ctx = string:sub_string(Path, 1, string:rstr(Path,"/")),
+    {atom_to_list(Proto)++"://" ++ Root, Ctx}.
+
 %% mochiweb_html:tokens (???)
 %% mochiweb_html:to_html
