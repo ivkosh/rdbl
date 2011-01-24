@@ -112,14 +112,23 @@ fetch_page(Url) ->
 			io_lib:format(<<"<html><head><title>Error</title></head><body>Error: cannot fetch ~s ~p</body></html>">>, [Url, ErrVal])
 	end.
 
+% U is a binary!
+to_abs_url({<<"src">>, U}, Ctx)  -> {<<"src">>,  list_to_binary(full_url(Ctx, binary_to_list(U)))};
+to_abs_url({<<"href">>, U}, Ctx) -> {<<"href">>, list_to_binary(full_url(Ctx, binary_to_list(U)))};
+to_abs_url(A, _) -> A.
+
 simplify_page(Url) ->
-	Body = fetch_page(Url), % TODO: делать в отдельном процессе и слать сообщение по завершению
+	Body = fetch_page(Url), % FIXME: делать в отдельном процессе и слать сообщение по завершению
+	Ctx = url_context(Url),
 	try mochiweb_html:parse(Body) of % не сработает если в файле нет ни одного тэга html
 		TreeOrig -> 
 			TitleStr = get_title(TreeOrig),
 			{_, _, TreeBody} = find_first_el(<<"body">>, TreeOrig), 
 			% ??? Every html has <body> or not? what if html is mailformed? 
 			TreeBodyClean = clean_html_tree(TreeBody),
+			% превращаем относительные url в абсолютные
+			TreeBodyWithImg = repl_el_attr_f(<<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, TreeBodyClean),
+			TreeBodyWithA   = repl_el_attr_f(<<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, TreeBodyWithImg),
 			TreeOut2 = {
 				<<"html">>, [], [
 					{
