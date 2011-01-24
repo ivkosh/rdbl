@@ -2,8 +2,9 @@
 
 -export([go/0, go/1, go/2, go1/2, find_el/2, rm_el/2, repl_el/3, repl_el/4, go_repl/3]).
 -export([clean_html_tree/1, find_first_el/2, rm_list_el/2, addref_el/1, rmref_el/1]).
--export([simplify_page/1, fetch_page/1]).
+-export([simplify_page/1, fetch_page/1, simplify_page/2]).
 -export([goyaws/1]).
+-export([full_url/2, url_context/1]).
 
 %%% Utils to walk and operate with HtmlTree from mochiweb_html:parse()
 
@@ -87,12 +88,10 @@ rmref_el({E, A, Rest}) -> {E, A, rmref_el(Rest)};
 rmref_el([]) -> [];
 rmref_el([H|T]) -> [rmref_el(H) | rmref_el(T)]. % processing list recursively
 
-
 clean_html_tree(Tree) -> % prepDocument in readability.js
 	% TODO: add: find max <frame> in frameset and use it as document
 	rm_list_el([<<"style">>, <<"link">>, <<"script">>, <<"noscript">>,
-		<<"form">>, <<"object">>, <<"iframe">>, <<"img">>], Tree).  % h1, h2?
-	% TODO: img жалко удалять лучше сделать относительные url абсолютными в img и a
+		<<"form">>, <<"object">>, <<"iframe">>], Tree).  % h1, h2?
 	% add more clean-up calls if needed
 
 
@@ -103,23 +102,31 @@ get_title(Tree) ->
 % Returns html-page
 fetch_page(Url) ->
 	inets:start(), % TODO: handle errors & not start if already started
-	% TODO: cache page
+	% TODO: cache page - save to ets by url
 	case httpc:request(Url) of 
 		{ok, {_, _, Body}} ->
 			Body;
 		{error, ErrVal} ->
-			% TODO: проверить output на неправильном url, возможно не тот формат строки/binary
-			io_lib:format(<<"<html><head><title>Error</title></head><body>Error: cannot fetch ~s ~p</body></html>">>, [Url, ErrVal])
+			io_lib:format(<<"<html><head><title>Error</title></head><body>Cannot fetch ~s - ~p</body></html>">>, [Url, ErrVal])
 	end.
 
+% U is a binary!
+to_abs_url({<<"src">>, U}, Ctx)  -> {<<"src">>,  list_to_binary(full_url(Ctx, binary_to_list(U)))};
+to_abs_url({<<"href">>, U}, Ctx) -> {<<"href">>, list_to_binary(full_url(Ctx, binary_to_list(U)))};
+to_abs_url(A, _) -> A.
+
 simplify_page(Url) ->
-	Body = fetch_page(Url), % TODO: делать в отдельном процессе и слать сообщение по завершению
+	Body = fetch_page(Url), % FIXME: делать в отдельном процессе и слать сообщение по завершению
+	Ctx = url_context(Url),
 	try mochiweb_html:parse(Body) of % не сработает если в файле нет ни одного тэга html
 		TreeOrig -> 
 			TitleStr = get_title(TreeOrig),
 			{_, _, TreeBody} = find_first_el(<<"body">>, TreeOrig), 
 			% ??? Every html has <body> or not? what if html is mailformed? 
 			TreeBodyClean = clean_html_tree(TreeBody),
+			% превращаем относительные url в абсолютные
+			TreeBodyWithImg = repl_el_attr_f(<<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, TreeBodyClean),
+			TreeBodyWithA   = repl_el_attr_f(<<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, TreeBodyWithImg),
 			TreeOut2 = {
 				<<"html">>, [], [
 					{
@@ -140,6 +147,12 @@ simplify_page(Url) ->
 			% Возвращаем оригинальный вариант
 			Body
 	end. 
+
+simplify_page(Url, FileName) ->
+	Page = simplify_page(Url),
+	{ok, F} = file:open(FileName, [binary, write]),
+	file:write(F, Page),
+	file:close(F).
 
 %%%% tests %%%%
 go() -> go(<<"tr">>, "http://www.sainf.ru").
@@ -196,3 +209,4 @@ url_context(URL) ->
 
 %% mochiweb_html:tokens (???)
 %% mochiweb_html:to_html
+
