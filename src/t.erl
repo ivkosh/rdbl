@@ -6,6 +6,13 @@
 -export([goyaws/1]).
 -export([full_url/2, url_context/1]).
 
+% хранит readability score для каждого элемента дерева
+-record(score, {
+		ref,
+		readability=0,
+		parent
+	}).
+
 %%% Utils to walk and operate with HtmlTree from mochiweb_html:parse()
 
 % HTML tag find: 
@@ -17,6 +24,10 @@ find_el(_, {comment, _}, Out) -> Out; % Comments in mochiweb_html:parse are 2-el
 % Element Tuples 
 find_el(Key, {Key, A, R}, Out) -> [{Key, A, R} | find_el(Key, R, Out)];	% key found, adding to out
 find_el(Key, {_E, _A, R}, Out) -> find_el(Key, R, Out); % all other (not found) - just continue with the rest part of tree
+% в случае {El, Attr, Rest} возвращаем Rest
+% если дерево модифицировано (добавлены score), то вместо Rest возвращаем элемент ref от score
+find_el(Key, {Key, Score, A, R}, Out) -> #score{ref=Ref} = Score, [{Key, Score, A, Ref} | find_el(Key, R, Out)];
+find_el(Key, {_E, _Score, _A, R}, Out) -> find_el(Key, R, Out); % all other (not found) - just continue with the rest part of tree
 % Lists
 find_el(_Key, [], Out) -> Out;
 find_el(Key, [H|T], Out) -> find_el(Key, H, Out) ++ find_el(Key, T, Out). % walk list if it is not empty
@@ -27,6 +38,8 @@ find_first_el(Key, HtmlNode) ->
 	case L of
 		[{K, A, E}|_] -> 
 			{K, A, E};
+		[{K, S, A, E}|_] -> 
+			{K, S, A, E};
 		[] ->
 			{Key, [], []}
 	end.
@@ -38,7 +51,9 @@ rm_el(_, NodeIn) when is_binary(NodeIn) -> NodeIn;
 rm_el(_, {comment, _}) -> []; % dropping comments
 %rm_el(_, {comment, T}) -> {comment, T}; % dropping comments
 rm_el(Key, {Key, _, _}) -> []; % Key found, dropping subtree
+rm_el(Key, {Key, _, _, _}) -> []; % Key found, dropping subtree
 rm_el(Key, {E, A, R}) -> {E, A, rm_el(Key, R)}; % continue to subtree
+rm_el(Key, {E, S, A, R}) -> {E, S, A, rm_el(Key, R)}; % continue to subtree
 rm_el(_, []) -> [];
 rm_el(Key, [H|T]) -> [rm_el(Key, H) | rm_el(Key, T)]. % processing list recursively
 
@@ -47,8 +62,10 @@ rm_el(Key, [H|T]) -> [rm_el(Key, H) | rm_el(Key, T)]. % processing list recursiv
 rm_brbr( NodeIn) when is_binary(NodeIn) -> NodeIn;
 rm_brbr( {comment, _}) -> []; % dropping comments
 rm_brbr({E, A, R}) -> {E, A, rm_brbr(R)}; % continue to subtree
+rm_brbr({E, S, A, R}) -> {E, S, A, rm_brbr(R)}; % continue to subtree
 rm_brbr([]) -> [];
 rm_brbr([{<<"br">>,_,_},{<<"br">>,_,_}|T]) -> [{<<"p">>,[],[]} | rm_brbr(T)]; % processing list recursively
+rm_brbr([{<<"br">>,_,_,_},{<<"br">>,_,_,_}|T]) -> [{<<"p">>,[],[]} | rm_brbr(T)]; % processing list recursively
 rm_brbr([H|T]) -> [rm_brbr(H) | rm_brbr(T)]. % processing list recursively
 
 % TODO: неэфективно - дерево пробегается столько раз, какова длина списка ключей.
@@ -65,7 +82,9 @@ repl_el(Key, NewKey, Node) -> repl_el(Key, NewKey, [], Node). % by default no Ne
 repl_el(_K, _NewKey, _NewAttr, NodeIn) when is_binary(NodeIn) -> NodeIn;
 repl_el(_K, _NewKey, _NewAttr, {comment, _}) -> []; % dropping comments
 repl_el(Key, NewKey, NewAttr, {Key, _A, Rest}) -> {NewKey, NewAttr, repl_el(Key, NewKey, NewAttr, Rest)}; % Key found changing and processing subtree
+repl_el(Key, NewKey, NewAttr, {Key, S, _A, Rest}) -> {NewKey, S, NewAttr, repl_el(Key, NewKey, NewAttr, Rest)}; % Key found changing and processing subtree
 repl_el(Key, NewKey, NewAttr, {E, A, R}) -> {E, A, repl_el(Key, NewKey, NewAttr, R)}; % continue to subtree
+repl_el(Key, NewKey, NewAttr, {E, S, A, R}) -> {E, S, A, repl_el(Key, NewKey, NewAttr, R)}; % continue to subtree
 repl_el(_, _, _, []) -> [];
 repl_el(Key, NewKey, NewAttr, [H|T]) -> [repl_el(Key, NewKey, NewAttr, H) | repl_el(Key, NewKey, NewAttr, T)]. % processing list recursively
 
@@ -76,15 +95,18 @@ repl_el(Key, NewKey, NewAttr, [H|T]) -> [repl_el(Key, NewKey, NewAttr, H) | repl
 repl_el_attr_f(_K, _Func, NodeIn) when is_binary(NodeIn) -> NodeIn;
 repl_el_attr_f(_K, _Func, {comment, _}) -> []; % dropping comments
 repl_el_attr_f(Key, Func, {Key, Attr, Rest}) -> {Key, Func(Attr), repl_el_attr_f(Key, Func, Rest)}; % Key found changing and processing subtree
+repl_el_attr_f(Key, Func, {Key, S, Attr, Rest}) -> {Key, S, Func(Attr), repl_el_attr_f(Key, Func, Rest)}; % Key found changing and processing subtree
 repl_el_attr_f(Key, Func, {E, A, R}) -> {E, A, repl_el_attr_f(Key, Func, R)}; % continue to subtree
+repl_el_attr_f(Key, Func, {E, S, A, R}) -> {E, S, A, repl_el_attr_f(Key, Func, R)}; % continue to subtree
 repl_el_attr_f(_, _, []) -> [];
 repl_el_attr_f(Key, Func, [H|T]) -> [repl_el_attr_f(Key, Func, H) | repl_el_attr_f(Key, Func, T)]. % processing list recursively
 
 % addreftree
+% добавляем в htmltree доп информацию - из tuple {Key, Attr, Rest} делаем {Key, score_record, Attr, Rest}
 addref_el(NodeIn) when is_binary(NodeIn) -> NodeIn;
 addref_el({comment, _}) -> []; % dropping comments
 %addref_el({E, A, Rest}) -> {E, [{ref_id,make_ref()}|A], addref_el(Rest)};
-addref_el({E, A, Rest}) -> {E, [{ref_id,make_ref()}|A], addref_el(Rest)};
+addref_el({E, A, Rest}) -> {E, #score{ref=make_ref()}, A, addref_el(Rest)};
 addref_el([]) -> [];
 addref_el([H|T]) -> [addref_el(H) | addref_el(T)]. % processing list recursively
 
@@ -92,10 +114,13 @@ addref_el([H|T]) -> [addref_el(H) | addref_el(T)]. % processing list recursively
 % TODO: проверять чтобы удалялись {ref_id, _} не только из головы Attr
 rmref_el(NodeIn) when is_binary(NodeIn) -> NodeIn;
 rmref_el({comment, _}) -> []; % dropping comments
-rmref_el({E, [{ref_id,_}|AT], Rest}) -> {E, AT, rmref_el(Rest)};
+%rmref_el({E, [{ref_id,_}|AT], Rest}) -> {E, AT, rmref_el(Rest)};
+rmref_el({E, _Score, A, Rest}) -> {E, A, rmref_el(Rest)};
 rmref_el({E, A, Rest}) -> {E, A, rmref_el(Rest)};
 rmref_el([]) -> [];
 rmref_el([H|T]) -> [rmref_el(H) | rmref_el(T)]. % processing list recursively
+
+%build_htmltree(HtmlPage) ->
 
 clean_html_tree(Tree) -> % prepDocument in readability.js
 	% TODO: add: find max <frame> in frameset and use it as document
@@ -134,23 +159,25 @@ simplify_page(Url) ->
 			TitleStr = get_title(TreeOrig),
 			{_, _, TreeBody} = find_first_el(<<"body">>, TreeOrig), 
 			% ??? Every html has <body> or not? what if html is mailformed? 
-			TreeBodyClean = clean_html_tree(TreeBody),
+%			TreeBodyClean = clean_html_tree(TreeBody),
 			% превращаем относительные url в абсолютные
-			TreeBodyWithImg = repl_el_attr_f(<<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, TreeBodyClean),
-			TreeBodyWithA   = repl_el_attr_f(<<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, TreeBodyWithImg),
-			TreeOut2 = {
+%			TreeBodyWithImg = repl_el_attr_f(<<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, TreeBodyClean),
+%			TreeBodyWithA   = repl_el_attr_f(<<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, TreeBodyWithImg),
+			TreeOut = {
 				<<"html">>, [], [
 					{
 						<<"head">>, [], [{<<"title">>, [], TitleStr}]
 					},
 					{
 						<<"body">>, [], 
-							[ {<<"h1">>, [], TitleStr} ] ++ % можно и убрать
-							TreeBodyWithA
+						%	[ {<<"h1">>, [], TitleStr} ] ++ % можно и убрать
+						repl_el_attr_f(<<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
+						repl_el_attr_f(<<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
+						clean_html_tree(TreeBody)))
 					}
 				]
 			},
-			mochiweb_html:to_html(TreeOut2)
+			mochiweb_html:to_html(TreeOut)
 	catch 
 		error:{badmatch,_} -> 
 			% mochiweb_html:parse("<html><body>"++Body++"</body></html>") 
