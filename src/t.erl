@@ -4,7 +4,7 @@
 -export([clean_html_tree/1, find_first_el/2, rm_list_el/2, addref_el/1, rmref_el/1]).
 -export([simplify_page/1, fetch_page/1, simplify_page/2]).
 -export([goyaws/1]).
--export([full_url/2, url_context/1]).
+-export([full_url/2, url_context/1, find_el_byref/2]).
 
 % хранит readability score для каждого элемента дерева
 -record(score, {
@@ -26,7 +26,7 @@ find_el(Key, {Key, A, R}, Out) -> [{Key, A, R} | find_el(Key, R, Out)];	% key fo
 find_el(Key, {_E, _A, R}, Out) -> find_el(Key, R, Out); % all other (not found) - just continue with the rest part of tree
 % в случае {El, Attr, Rest} возвращаем Rest
 % если дерево модифицировано (добавлены score), то вместо Rest возвращаем элемент ref от score
-find_el(Key, {Key, Score, A, R}, Out) -> #score{ref=Ref} = Score, [{Key, Score, A, Ref} | find_el(Key, R, Out)];
+find_el(Key, {Key, Score, A, R}, Out) -> #score{ref=Ref} = Score, [{Key, Score, A, Ref} | find_el(Key, R, Out)];       %%%FIXME: Ref по сути дублируется в score и в 4 параметре tuple
 find_el(Key, {_E, _Score, _A, R}, Out) -> find_el(Key, R, Out); % all other (not found) - just continue with the rest part of tree
 % Lists
 find_el(_Key, [], Out) -> Out;
@@ -43,6 +43,24 @@ find_first_el(Key, HtmlNode) ->
 		[] ->
 			{Key, [], []}
 	end.
+
+find_el_byref(_Ref, HtmlNode) when is_binary(HtmlNode) -> []; % Binary element (leaf)
+find_el_byref(_, {comment, _}) -> []; % Comments in mochiweb_html:parse are 2-element tuples 
+% Element Tuples 
+% в случае {El, Attr, Rest} возвращаем Rest
+% если дерево модифицировано (добавлены score), то вместо Rest возвращаем элемент ref от score
+find_el_byref(Ref, {Key, #score{ref=Ref}=Score, A, R}) -> {Key, Score, A, R};
+find_el_byref(Ref, {_E, _Score, _A, R}) -> find_el_byref(Ref, R); % all other (not found) - just continue with the rest part of tree
+% Lists
+find_el_byref(_, []) -> [];
+find_el_byref(Ref, [H|T]) -> 
+	E1 = find_el_byref(Ref, H),
+	if 
+		is_tuple(E1) ->
+			E1; % нашли, дальше не интересно
+		true ->
+			find_el_byref(Ref, T)
+	end. % walk list if it is not empty
 
 % HTML tag remover: rm_el(Key, HtmlNode) 
 % удаляет из HtmlNode поддеревья вида Key и comment, возвращает очищенное HtmlNode
@@ -103,12 +121,19 @@ repl_el_attr_f(Key, Func, [H|T]) -> [repl_el_attr_f(Key, Func, H) | repl_el_attr
 
 % addreftree
 % добавляем в htmltree доп информацию - из tuple {Key, Attr, Rest} делаем {Key, score_record, Attr, Rest}
-addref_el(NodeIn) when is_binary(NodeIn) -> NodeIn;
-addref_el({comment, _}) -> []; % dropping comments
-%addref_el({E, A, Rest}) -> {E, [{ref_id,make_ref()}|A], addref_el(Rest)};
-addref_el({E, A, Rest}) -> {E, #score{ref=make_ref()}, A, addref_el(Rest)};
-addref_el([]) -> [];
-addref_el([H|T]) -> [addref_el(H) | addref_el(T)]. % processing list recursively
+%%addref_el(R) when is_binary(R) -> R;
+%%addref_el({comment, _}) -> []; % dropping comments
+%%%addref_el({E, A, Rest}) -> {E, [{ref_id,make_ref()}|A], addref_el(Rest)};
+%%addref_el({E, A, Rest}) -> {E, #score{ref=make_ref()}, A, addref_el(Rest)};
+%%addref_el([]) -> [];
+%%addref_el([H|T]) -> [addref_el(H) | addref_el(T)]. % processing list recursively
+
+addref_el(Tree) -> addref_el(Tree, root).
+addref_el(R, _) when is_binary(R) -> R;
+addref_el({comment, _}, _) -> []; % dropping comments
+addref_el({E, A, Rest}, Parent) -> Ref=make_ref(), {E, #score{ref=Ref, parent=Parent}, A, addref_el(Rest, Ref)}; % setting current parent and giving my ref to child as parent
+addref_el([], _) -> [];
+addref_el([H|T], Parent) -> [addref_el(H, Parent) | addref_el(T, Parent)]. % processing list recursively
 
 % rmref from tree
 % TODO: проверять чтобы удалялись {ref_id, _} не только из головы Attr
@@ -158,11 +183,6 @@ simplify_page(Url) ->
 		TreeOrig -> 
 			TitleStr = get_title(TreeOrig),
 			{_, _, TreeBody} = find_first_el(<<"body">>, TreeOrig), 
-			% ??? Every html has <body> or not? what if html is mailformed? 
-%			TreeBodyClean = clean_html_tree(TreeBody),
-			% превращаем относительные url в абсолютные
-%			TreeBodyWithImg = repl_el_attr_f(<<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, TreeBodyClean),
-%			TreeBodyWithA   = repl_el_attr_f(<<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, TreeBodyWithImg),
 			TreeOut = {
 				<<"html">>, [], [
 					{
@@ -171,6 +191,7 @@ simplify_page(Url) ->
 					{
 						<<"body">>, [], 
 						%	[ {<<"h1">>, [], TitleStr} ] ++ % можно и убрать
+						% превращаем относительные url в абсолютные
 						repl_el_attr_f(<<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
 						repl_el_attr_f(<<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
 						clean_html_tree(TreeBody)))
@@ -191,6 +212,9 @@ simplify_page(Url, FileName) ->
 	{ok, F} = file:open(FileName, [binary, write]),
 	file:write(F, Page),
 	file:close(F).
+
+%TODO:
+%simplify_page(InFile, OutFile)
 
 %%%% tests %%%%
 go() -> go(<<"tr">>, "http://www.sainf.ru").
