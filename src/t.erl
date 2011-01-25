@@ -1,9 +1,9 @@
 -module(t).
 
--export([go/0, go/1, go/2, go1/2, find_el/2, find_elems/2, rm_el/2, repl_el/3, repl_el/4, go_repl/3, rm_brbr/1]).
--export([clean_html_tree/1, rm_el/2, addref_el/1, rmref_el/1]).
+-export([go/0, go/1, go/2, go1/2, go_repl/3, goyaws/1]).
+-export([find_el/2, find_elems/2, rm_el/2, repl_el/3, repl_el/4, rm_brbr/1]).
+-export([clean_html_tree/1, addref_el/1, rmref_el/1]).
 -export([simplify_page/1, fetch_page/1, simplify_page/2]).
--export([goyaws/1]).
 -export([full_url/2, url_context/1]).
 
 % хранит readability score для каждого элемента дерева
@@ -33,10 +33,8 @@ find_elems(Key, HtmlNode) when is_binary(Key) -> find_el_bykey(Key, HtmlNode, []
 % - list of all found elements (list of tuples) if SearchType == multi
 find_el_bykey(_, HtmlNode, Out, multi) when is_binary(HtmlNode) -> Out; % leaf
 find_el_bykey(_, HtmlNode, _, _)       when is_binary(HtmlNode) -> [];  % if first element search leaf is not an option
-
-find_el_bykey(_, {comment, _}, Out, multi) -> Out; % comments in mochiweb_html:parse are 2-element tuples 
-find_el_bykey(_, {comment, _}, _, _)       -> [];  % if first element search, dropping comments MAYBE: drop comments anyway in both cases
-find_el_bykey(Key, Elem, Out, SearchType) when is_tuple(Elem) ->           % Element found, adding to Out 
+find_el_bykey(_, {comment, _}, _, _) -> [];                             % comments in mochiweb_html:parse are 2-element tuples, dropping them
+find_el_bykey(Key, Elem, Out, SearchType) when is_tuple(Elem) ->        % Element found, adding to Out 
 	case Elem of
 		% element found (key in current Elem equals to Key)
 		{Key, _, R} when SearchType == multi    -> [Elem | find_el_bykey(Key, R, Out, SearchType)];	
@@ -93,7 +91,7 @@ find_el_byref(Ref, [H|T]) ->
 % Если Key - это список, то значит надо удалить из дерева все тэги из списка:
 rm_el([], HtmlTree) -> HtmlTree;
 rm_el([KeyH|KeyT], HtmlTree) ->         % TODO: неэфективно - дерево пробегается столько раз, какова длина списка ключей.
-	rm_el(KeyH, rm_el(KeyT, HtmlTree)).	% переписать rm_el([..],_) чтобы он мог работать со списком Key и выкидывать все за один проход
+	rm_el(KeyH, rm_el(KeyT, HtmlTree));	% переписать rm_el([..],_) чтобы он мог работать со списком Key и выкидывать все за один проход
 % Key не список:
 rm_el(_, NodeIn) when is_binary(NodeIn) -> NodeIn;
 rm_el(_, {comment, _}) -> []; % dropping comments
@@ -168,7 +166,7 @@ rmref_el([H|T]) -> [rmref_el(H) | rmref_el(T)]. % processing list recursively
 clean_html_tree(Tree) -> % prepDocument in readability.js
 	% TODO: add: find max <frame> in frameset and use it as document
 	rm_brbr( % заменяем <br><br> на <p>
-		rm_list_el([<<"style">>, <<"link">>, <<"script">>, <<"noscript">>,
+		rm_el([<<"style">>, <<"link">>, <<"script">>, <<"noscript">>,
 			<<"form">>, <<"object">>, <<"iframe">>], Tree)
 	).  % h1, h2?
 	% add more clean-up calls if needed
