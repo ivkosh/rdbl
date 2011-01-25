@@ -95,7 +95,6 @@ rm_el([KeyH|KeyT], HtmlTree) ->         % TODO: неэфективно - дер�
 % Key не список:
 rm_el(_, NodeIn) when is_binary(NodeIn) -> NodeIn;
 rm_el(_, {comment, _}) -> []; % dropping comments
-%rm_el(_, {comment, T}) -> {comment, T}; % dropping comments
 rm_el(Key, {Key, _, _}) -> []; % Key found, dropping subtree
 rm_el(Key, {Key, _, _, _}) -> []; % Key found, dropping subtree
 rm_el(Key, {E, A, R}) -> {E, A, rm_el(Key, R)}; % continue to subtree
@@ -103,17 +102,17 @@ rm_el(Key, {E, S, A, R}) -> {E, S, A, rm_el(Key, R)}; % continue to subtree
 rm_el(_, []) -> [];
 rm_el(Key, [H|T]) -> [rm_el(Key, H) | rm_el(Key, T)]. % processing list recursively
 
-% заменяем <br><br> на <p>
-% FIXME: что делать если подряд идет больше двух <br>? как их заменить на один <p>?
-rm_brbr( NodeIn) when is_binary(NodeIn) -> NodeIn;
-rm_brbr( {comment, _}) -> []; % dropping comments
-rm_brbr({E, A, R}) -> {E, A, rm_brbr(R)}; % continue to subtree
-rm_brbr({E, S, A, R}) -> {E, S, A, rm_brbr(R)}; % continue to subtree
+% Если подряд идет два или больше <br>, заменяем на <p>
+rm_brbr(NodeIn) when is_binary(NodeIn) -> NodeIn;
+rm_brbr({comment, _})                  -> []; % dropping comments
+rm_brbr({E,    A, R}) -> {E,    A, rm_brbr(R)}; % continue to subtree
+rm_brbr({E, S, A, R}) -> {E, S, A, rm_brbr(R)}; 
 rm_brbr([]) -> [];
-rm_brbr([{<<"br">>,_,_},{<<"br">>,_,_}|T]) -> [{<<"p">>,[],[]} | rm_brbr(T)]; % processing list recursively
-rm_brbr([{<<"br">>,_,_,_},{<<"br">>,_,_,_}|T]) -> [{<<"p">>,[],[]} | rm_brbr(T)]; % processing list recursively
+rm_brbr([{<<"br">>,_,_},   {<<"br">>,_,_}   | T]) -> rm_brbr([{<<"p">>,[],[]} | T]); % Replacing <br><br> with <p>,
+rm_brbr([{<<"p">>,_,_},    {<<"br">>,_,_}   | T]) -> rm_brbr([{<<"p">>,[],[]} | T]); % if more than two <br> in row, replacing all.
+rm_brbr([{<<"br">>,_,_,_}, {<<"br">>,_,_,_} | T]) -> rm_brbr([{<<"p">>,[],[]} | T]); % Do the same for scored elements. 
+rm_brbr([{<<"p">>,_,_,_},  {<<"br">>,_,_,_} | T]) -> rm_brbr([{<<"p">>,[],[]} | T]);
 rm_brbr([H|T]) -> [rm_brbr(H) | rm_brbr(T)]. % processing list recursively
-
 
 % HTML tag replacer:
 % example: repl_el(<<"br">>, <<"p">>, HtmlTree) -> HtmlTreeWithBrReplacedToP
@@ -283,8 +282,11 @@ full_url({Root, Context}, ComponentUrl) ->
 url_context(URL) ->
     {Proto, _, Root, _Port, Path, _Query} = http_uri:parse(URL), 
     Ctx = string:sub_string(Path, 1, string:rstr(Path,"/")),
-    {atom_to_list(Proto)++"://" ++ Root, Ctx}.
+    {atom_to_list(Proto) ++ "://" ++ Root, Ctx}.
 
 %% mochiweb_html:tokens (???)
 %% mochiweb_html:to_html
-
+%
+% ?TODO: поменять местами в scored tuple S и A (более естественно) и убрать четвертый параметр Ref 
+% отличить scored от unscored будет легко (хотя в этом случае оба вида будут 3х элементными tuple): 
+% - если третий параметр list, то значит unscored, если tuple (record) то scored
