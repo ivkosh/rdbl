@@ -1,10 +1,10 @@
 -module(t).
 
--export([go/0, go/1, go/2, go1/2, find_el/2, rm_el/2, repl_el/3, repl_el/4, go_repl/3, rm_brbr/1]).
--export([clean_html_tree/1, find_first_el/2, rm_list_el/2, addref_el/1, rmref_el/1]).
+-export([go/0, go/1, go/2, go1/2, find_el/2, find_elems/2, rm_el/2, repl_el/3, repl_el/4, go_repl/3, rm_brbr/1]).
+-export([clean_html_tree/1, rm_el/2, addref_el/1, rmref_el/1]).
 -export([simplify_page/1, fetch_page/1, simplify_page/2]).
 -export([goyaws/1]).
--export([full_url/2, url_context/1, find_el_byref/2]).
+-export([full_url/2, url_context/1]).
 
 % хранит readability score для каждого элемента дерева
 -record(score, {
@@ -13,43 +13,67 @@
 		parent
 	}).
 
-%%% Utils to walk and operate with HtmlTree from mochiweb_html:parse()
-
-% HTML tag find: 
-% ищет в HtmlNode все элементы Key и возвращает их списком tuple {Key, Attr, SubTree}
-find_el(Key, HtmlNode) -> find_el(Key, HtmlNode, []).
+-define(ROOT_REF, root).
 %
-find_el(_Key, HtmlNode, Out) when is_binary(HtmlNode) -> Out; % Binary element (leaf)
-find_el(_, {comment, _}, Out) -> Out; % Comments in mochiweb_html:parse are 2-element tuples 
-% Element Tuples 
-find_el(Key, {Key, A, R}, Out) -> [{Key, A, R} | find_el(Key, R, Out)];	% key found, adding to out
-find_el(Key, {_E, _A, R}, Out) -> find_el(Key, R, Out); % all other (not found) - just continue with the rest part of tree
-% в случае {El, Attr, Rest} возвращаем Rest
-% если дерево модифицировано (добавлены score), то вместо Rest возвращаем элемент ref от score
-find_el(Key, {Key, Score, A, R}, Out) -> #score{ref=Ref} = Score, [{Key, Score, A, Ref} | find_el(Key, R, Out)];       %%%FIXME: Ref по сути дублируется в score и в 4 параметре tuple
-find_el(Key, {_E, _Score, _A, R}, Out) -> find_el(Key, R, Out); % all other (not found) - just continue with the rest part of tree
+% Utils to walk and operate with HtmlTree from mochiweb_html:parse()
+%
+
+% HTML tag find: ищет в HtmlNode элемент по Key или по Ref и возвращает его
+find_el(Ref, HtmlNode) when is_reference(Ref) -> find_el_byref(Ref, HtmlNode);
+find_el(?ROOT_REF, HtmlNode)                  -> find_el_byref(?ROOT_REF, HtmlNode);
+find_el(Key, HtmlNode) when is_binary(Key)    -> find_el_bykey(Key, HtmlNode, [], first).
+% ищет все элементы и возвращает их списком 
+find_elems(Key, HtmlNode) when is_binary(Key) -> find_el_bykey(Key, HtmlNode, [], multi).
+
+%
+% find_el_by_key(Key, HtmlTree, OutAcc, SearchType=first|multi)
+%
+% returns: 
+% - first element found as a tuple if SearchType != multi 
+% - list of all found elements (list of tuples) if SearchType == multi
+find_el_bykey(_, HtmlNode, Out, multi) when is_binary(HtmlNode) -> Out; % leaf
+find_el_bykey(_, HtmlNode, _, _)       when is_binary(HtmlNode) -> [];  % if first element search leaf is not an option
+
+find_el_bykey(_, {comment, _}, Out, multi) -> Out; % comments in mochiweb_html:parse are 2-element tuples 
+find_el_bykey(_, {comment, _}, _, _)       -> [];  % if first element search, dropping comments MAYBE: drop comments anyway in both cases
+find_el_bykey(Key, Elem, Out, SearchType) when is_tuple(Elem) ->           % Element found, adding to Out 
+	case Elem of
+		% element found (key in current Elem equals to Key)
+		{Key, _, R} when SearchType == multi    -> [Elem | find_el_bykey(Key, R, Out, SearchType)];	
+		{Key, _, _}                             ->  Elem; % return first element and stop processing	
+		% if HtmlTree was modified with score tuple contains 4 elements
+		{Key, S, A, R} ->
+			#score{ref=Ref} = S,
+			if % MAYBE: Ref и так уже есть в S, по сути дублирование исключительно для того чтобы сохранить tuple 4х-элементным 
+				SearchType == multi -> [{Key, S, A, Ref} | find_el_bykey(Key, R, Out, SearchType)];	
+				true                ->  {Key, S, A, Ref}
+			end;
+		% key in current Elem not equalt to Key, e.g. still not found, continue search in the rest part of tree
+		{_, _, R}    -> find_el_bykey(Key, R, Out, SearchType); 
+		{_, _, _, R} -> find_el_bykey(Key, R, Out, SearchType);
+		_            -> [] % unsupported case
+	end;
 % Lists
-find_el(_Key, [], Out) -> Out;
-find_el(Key, [H|T], Out) -> find_el(Key, H, Out) ++ find_el(Key, T, Out). % walk list if it is not empty
-
-% TODO: неэффективно - хоть нужен всего один элемент, все равно возвращается весь список. Переписать потом
-find_first_el(Key, HtmlNode) ->
-	L = find_el(Key, HtmlNode),
-	case L of
-		[{K, A, E}|_] -> 
-			{K, A, E};
-		[{K, S, A, E}|_] -> 
-			{K, S, A, E};
-		[] ->
-			{Key, [], []}
+find_el_bykey(_, [], Out, _) -> Out;
+find_el_bykey(Key, [H|T], Out, SearchType) -> 
+	E1 = find_el_bykey(Key, H, Out, SearchType),
+	if 
+		SearchType == multi ->
+			E1 ++ find_el_bykey(Key, T, Out, SearchType); % walk rest part of listlist if it is not empty
+		is_tuple(E1) -> % SearchType is not multi (e.g. first) AND E1 is tuple - we found it!
+			E1;
+		true -> % otherwise continue search
+			find_el_bykey(Key, T, Out, SearchType)
 	end.
+			
 
-find_el_byref(_Ref, HtmlNode) when is_binary(HtmlNode) -> []; % Binary element (leaf)
-find_el_byref(_, {comment, _}) -> []; % Comments in mochiweb_html:parse are 2-element tuples 
-% Element Tuples 
-% в случае {El, Attr, Rest} возвращаем Rest
-% если дерево модифицировано (добавлены score), то вместо Rest возвращаем элемент ref от score
-find_el_byref(Ref, {Key, #score{ref=Ref}=Score, A, R}) -> {Key, Score, A, R};
+%
+% find_el_by_ref(ref, HtmlTree)
+%
+find_el_byref(_Ref, HtmlNode) when is_binary(HtmlNode) -> []; % leaf is not an option
+find_el_byref(_, {comment, _}) -> [];                         % comment is not an option
+% если ищем по ref, то тут во-первых всегда first, а во-вторых всегда модифицированное дерево, поэтому не паримся с доп проверками
+find_el_byref(Ref, {Key, #score{ref=Ref}=S, A, _}) -> {Key, S, A, Ref};
 find_el_byref(Ref, {_E, _Score, _A, R}) -> find_el_byref(Ref, R); % all other (not found) - just continue with the rest part of tree
 % Lists
 find_el_byref(_, []) -> [];
@@ -65,6 +89,12 @@ find_el_byref(Ref, [H|T]) ->
 % HTML tag remover: rm_el(Key, HtmlNode) 
 % удаляет из HtmlNode поддеревья вида Key и comment, возвращает очищенное HtmlNode
 % example: rm_el(<<"script">>, HtmlTree) -> HtmlTreeWithoutScripts
+%
+% Если Key - это список, то значит надо удалить из дерева все тэги из списка:
+rm_el([], HtmlTree) -> HtmlTree;
+rm_el([KeyH|KeyT], HtmlTree) ->         % TODO: неэфективно - дерево пробегается столько раз, какова длина списка ключей.
+	rm_el(KeyH, rm_el(KeyT, HtmlTree)).	% переписать rm_el([..],_) чтобы он мог работать со списком Key и выкидывать все за один проход
+% Key не список:
 rm_el(_, NodeIn) when is_binary(NodeIn) -> NodeIn;
 rm_el(_, {comment, _}) -> []; % dropping comments
 %rm_el(_, {comment, T}) -> {comment, T}; % dropping comments
@@ -86,12 +116,6 @@ rm_brbr([{<<"br">>,_,_},{<<"br">>,_,_}|T]) -> [{<<"p">>,[],[]} | rm_brbr(T)]; % 
 rm_brbr([{<<"br">>,_,_,_},{<<"br">>,_,_,_}|T]) -> [{<<"p">>,[],[]} | rm_brbr(T)]; % processing list recursively
 rm_brbr([H|T]) -> [rm_brbr(H) | rm_brbr(T)]. % processing list recursively
 
-% TODO: неэфективно - дерево пробегается столько раз, какова длина списка ключей.
-% переписать rm_list_el чтобы он мог работать со списком Key и выкидывать все за один проход
-rm_list_el([], HtmlTree) -> 
-	HtmlTree;
-rm_list_el([KeyH|KeyT], HtmlTree) ->
-	rm_el(KeyH, rm_list_el(KeyT, HtmlTree)).	
 
 % HTML tag replacer:
 % example: repl_el(<<"br">>, <<"p">>, HtmlTree) -> HtmlTreeWithBrReplacedToP
@@ -120,15 +144,10 @@ repl_el_attr_f(_, _, []) -> [];
 repl_el_attr_f(Key, Func, [H|T]) -> [repl_el_attr_f(Key, Func, H) | repl_el_attr_f(Key, Func, T)]. % processing list recursively
 
 % addreftree
-% добавляем в htmltree доп информацию - из tuple {Key, Attr, Rest} делаем {Key, score_record, Attr, Rest}
-%%addref_el(R) when is_binary(R) -> R;
-%%addref_el({comment, _}) -> []; % dropping comments
-%%%addref_el({E, A, Rest}) -> {E, [{ref_id,make_ref()}|A], addref_el(Rest)};
-%%addref_el({E, A, Rest}) -> {E, #score{ref=make_ref()}, A, addref_el(Rest)};
-%%addref_el([]) -> [];
-%%addref_el([H|T]) -> [addref_el(H) | addref_el(T)]. % processing list recursively
-
-addref_el(Tree) -> addref_el(Tree, root).
+% добавляем в htmltree доп информацию - record score 
+%
+addref_el(Tree) -> addref_el(Tree, ?ROOT_REF). % the main parent ref is ?ROOT_REF
+%
 addref_el(R, _) when is_binary(R) -> R;
 addref_el({comment, _}, _) -> []; % dropping comments
 addref_el({E, A, Rest}, Parent) -> Ref=make_ref(), {E, #score{ref=Ref, parent=Parent}, A, addref_el(Rest, Ref)}; % setting current parent and giving my ref to child as parent
@@ -139,7 +158,6 @@ addref_el([H|T], Parent) -> [addref_el(H, Parent) | addref_el(T, Parent)]. % pro
 % TODO: проверять чтобы удалялись {ref_id, _} не только из головы Attr
 rmref_el(NodeIn) when is_binary(NodeIn) -> NodeIn;
 rmref_el({comment, _}) -> []; % dropping comments
-%rmref_el({E, [{ref_id,_}|AT], Rest}) -> {E, AT, rmref_el(Rest)};
 rmref_el({E, _Score, A, Rest}) -> {E, A, rmref_el(Rest)};
 rmref_el({E, A, Rest}) -> {E, A, rmref_el(Rest)};
 rmref_el([]) -> [];
@@ -157,7 +175,7 @@ clean_html_tree(Tree) -> % prepDocument in readability.js
 
 
 get_title(Tree) ->
-	{_, _, TitleStr} = find_first_el(<<"title">>, Tree),
+	{_, _, TitleStr} = find_el(<<"title">>, Tree),
 	TitleStr.
 
 % Returns html-page
@@ -182,7 +200,7 @@ simplify_page(Url) ->
 	try mochiweb_html:parse(Body) of % не сработает если в файле нет ни одного тэга html
 		TreeOrig -> 
 			TitleStr = get_title(TreeOrig),
-			{_, _, TreeBody} = find_first_el(<<"body">>, TreeOrig), 
+			{_, _, TreeBody} = find_el(<<"body">>, TreeOrig), 
 			TreeOut = {
 				<<"html">>, [], [
 					{
@@ -246,7 +264,7 @@ go1(What, Where) ->
 	inets:start(),
 	{ok, {_, _, Body}} = httpc:request(Where),
 	HtmlTree = mochiweb_html:parse(Body),
-	Out = find_el(What, HtmlTree, []),
+	Out = find_el(What, HtmlTree),
 	{Out, length(Out)}.
 
 %% abs url inside the same server ej: /img/image.png    
