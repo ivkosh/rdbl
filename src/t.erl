@@ -43,8 +43,8 @@ find_el_bykey(Key, Elem, Out, SearchType) when is_tuple(Elem) ->        % Elemen
 		{Key, S, A, R} ->
 			#score{ref=Ref} = S,
 			if % MAYBE: Ref и так уже есть в S, по сути дублирование исключительно для того чтобы сохранить tuple 4х-элементным 
-				SearchType == multi -> [{Key, S, A, Ref} | find_el_bykey(Key, R, Out, SearchType)];	
-				true                ->  {Key, S, A, Ref}
+				SearchType == multi -> [Elem | find_el_bykey(Key, R, Out, SearchType)];	
+				true                ->  Elem
 			end;
 		% key in current Elem not equalt to Key, e.g. still not found, continue search in the rest part of tree
 		{_, _, R}    -> find_el_bykey(Key, R, Out, SearchType); 
@@ -71,7 +71,7 @@ find_el_bykey(Key, [H|T], Out, SearchType) ->
 find_el_byref(_Ref, HtmlNode) when is_binary(HtmlNode) -> []; % leaf is not an option
 find_el_byref(_, {comment, _}) -> [];                         % comment is not an option
 % если ищем по ref, то тут во-первых всегда first, а во-вторых всегда модифицированное дерево, поэтому не паримся с доп проверками
-find_el_byref(Ref, {Key, #score{ref=Ref}=S, A, _}) -> {Key, S, A, Ref};
+find_el_byref(Ref, {Key, #score{ref=Ref}=S, A, R}) -> {Key, S, A, R};
 find_el_byref(Ref, {_E, _Score, _A, R}) -> find_el_byref(Ref, R); % all other (not found) - just continue with the rest part of tree
 % Lists
 find_el_byref(_, []) -> [];
