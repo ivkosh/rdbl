@@ -7,6 +7,7 @@
 -export([full_url/2, url_context/1]).
 -export([score_tree/1]).
 -export([get_ref/1, get_parent_ref/1, get_score/1]).
+-export([score_list/1]).
 
 % хранит readability score для каждого элемента дерева
 -record(score, {
@@ -16,6 +17,9 @@
 	}).
 
 -define(ROOT_REF, root).
+
+-define(RE_NEGATIVE, "\\b(comment|meta|footer|footnote)\\b").
+-define(RE_POSITIVE, "\\b(post|hentry|entry[-]?(content|text|body)?|article[-]?(content|text|body)?)\\b").
 
 % считает количество запятых (,) в HtmlTree
 count_commas({comment, _}) -> 0; 
@@ -216,6 +220,14 @@ simplify_page(Url) ->
 		TreeOrig -> 
 			TitleStr = get_title(TreeOrig),
 			{_, _, TreeBody} = find_el(<<"body">>, TreeOrig), 
+			ScoredTree = score_tree(
+				addref_el(
+					repl_el_attr_f(<<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
+					repl_el_attr_f(<<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
+					clean_html_tree(TreeBody)))
+				)
+			),
+			OptimumRef = get_max_score_ref(ScoredTree),
 			TreeOut = {
 				<<"html">>, [], [
 					{
@@ -225,9 +237,7 @@ simplify_page(Url) ->
 						<<"body">>, [], 
 						%	[ {<<"h1">>, [], TitleStr} ] ++ % можно и убрать
 						% превращаем относительные url в абсолютные
-						repl_el_attr_f(<<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
-						repl_el_attr_f(<<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
-						clean_html_tree(TreeBody)))
+						rmref_el(find_el(OptimumRef, ScoredTree))
 					}
 				]
 			},
@@ -263,36 +273,19 @@ get_score(Node) ->
 
 score_by_class_or_id(Node) ->
 	{_, _, Attrs, _} = Node,
-	case lists:keyfind(<<"class">>, 1, Attrs) of % maybe foldl is better???
-		{<<"class">>, ClassBin} ->
-			ClassStr = binary_to_list(ClassBin);
-		false ->
-			ClassStr = ""
-	end,
-	case lists:keyfind(<<"id">>, 1, Attrs) of
-		{<<"id">>, IdBin} ->
-			IdStr = binary_to_list(IdBin);	
-		false ->
-			IdStr = ""
-	end,
-	% TODO: do next only if found
-	StrToScan = ClassStr++" "++IdStr, 
-	% TODO: replace with re:
-	case regexp:first_match(StrToScan, "(comment|meta|footer|footnote)") of
-			{match, _, _} ->
-				ScoreDiff = -50;
-			nomatch -> % TODO: replace with _
-				case regexp:first_match(StrToScan, "(post|hentry|entry[-]?(content|text|body)?|article[-]?(content|text|body)?)") of
-					{match, _, _} -> 
-						ScoreDiff = 25;
-					nomatch -> % TODO: replace with _
-						ScoreDiff = 0
-				end
-			% FIXME: для отладки пока ошибки не ловим
-			%{error, _} ->
-			%	error
-	end,
-	ScoreDiff.
+	AttrVals = [ V || {K, V} <- Attrs, (K == <<"id">>) or (K == <<"class">>) ],
+	if 
+		AttrVals == [] -> 0; % no id or class (list is empty)
+		true -> % e.g. we have id or class or both
+			case lists:foldl(fun(El, Acc) -> Acc or (re:run(El, ?RE_NEGATIVE, [{capture, none}]) == match) end, false, AttrVals) of
+				true -> -50;
+				false ->
+					case lists:foldl(fun(El, Acc) -> Acc or (re:run(El, ?RE_POSITIVE, [{capture, none}]) == match) end, false, AttrVals) of
+						true -> 25;
+						false -> 0
+					end
+			end
+	end.
 
 score_one_p(PNode, TreeFull) ->
 	CommaScore = count_commas(PNode),
@@ -312,6 +305,29 @@ score_one_p(PNode, TreeFull) ->
 score_tree(Tree) ->
 	PList = find_elems(<<"p">>, Tree),
 	lists:foldl(fun score_one_p/2, Tree, PList).
+
+
+score_list(Tree) -> score_list(Tree, []).
+score_list(HtmlNode, _Out) when is_binary(HtmlNode) -> []; %Out; % leaf ?TODO: or []?
+score_list({comment, _}, _) -> [];                             % comments in mochiweb_html:parse are 2-element tuples, dropping them
+score_list({_, #score{readability=Rdbl, ref=Ref}, _, R}, Out) -> [{Ref, Rdbl} | score_list(R, Out)];	
+score_list({_, _, _, R}, Out) -> score_list(R, Out);	
+score_list([], _Out) -> []; %Out; % or just []?
+score_list([H|T], Out) -> score_list(H, Out) ++ score_list(T, Out). 
+
+get_max_score_ref(Tree) ->
+	{Ref, _MaxScore} = lists:foldl(
+		fun({Ref, Score}, {Ref0, Score0}) -> 
+				if 
+					is_reference(Ref) -> 
+						if 
+							Score0<Score -> {Ref, Score}; 
+							true->{Ref0, Score0} 
+						end; 
+					true->{Ref, Score} 
+				end 
+		end, {0, 0}, score_list(Tree)),
+	Ref.
 
 %%%% tests %%%%
 go() -> go(<<"tr">>, "http://www.sainf.ru").
