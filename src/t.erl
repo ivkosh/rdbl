@@ -2,9 +2,11 @@
 
 -export([go/0, go/1, go/2, go1/2, go_repl/3, goyaws/1]).
 -export([find_el/2, find_elems/2, rm_el/2, repl_el/3, repl_el/4, rm_brbr/1, count_commas/1]).
--export([clean_html_tree/1, addref_el/1, rmref_el/1]).
+-export([clean_html_tree/1, addref_el/1, rmref_el/1, modify_score/3]).
 -export([simplify_page/1, fetch_page/1, simplify_page/2]).
 -export([full_url/2, url_context/1]).
+-export([score_tree/1]).
+-export([get_ref/1, get_parent_ref/1, get_score/1]).
 
 % хранит readability score для каждого элемента дерева
 -record(score, {
@@ -148,6 +150,14 @@ repl_el_attr_f(Key, Func, {E, S, A, R}) -> {E, S, A, repl_el_attr_f(Key, Func, R
 repl_el_attr_f(_, _, []) -> [];
 repl_el_attr_f(Key, Func, [H|T]) -> [repl_el_attr_f(Key, Func, H) | repl_el_attr_f(Key, Func, T)]. % processing list recursively
 
+% modify readability score on scored tree
+modify_score(_, Leaf, _) when is_binary(Leaf) -> Leaf;
+modify_score(_, {comment, _}, _) -> []; 
+modify_score(Ref, {Key, #score{ref=Ref, readability=Rdbl, parent=ParentRef}, A, R}, Score) -> {Key, #score{ref=Ref, readability=Rdbl+Score, parent=ParentRef}, A, R};
+modify_score(Ref, {E, S, A, R}, Score) -> {E, S, A, modify_score(Ref, R, Score)}; 
+modify_score(_, [], _) -> [];
+modify_score(Ref, [H|T], Score) -> [modify_score(Ref, H, Score) | modify_score(Ref, T, Score)].
+
 % addreftree
 % добавляем в htmltree доп информацию - record score 
 %
@@ -238,6 +248,70 @@ simplify_page(Url, FileName) ->
 
 %TODO:
 %simplify_page(InFile, OutFile)
+
+get_parent_ref(Node) ->
+	{_, #score{parent=ParentRef}, _, _} = Node,
+	ParentRef.
+
+get_ref(Node) ->
+	{_, #score{ref=Ref}, _, _} = Node,
+	Ref.
+
+get_score(Node) ->
+	{_, #score{readability=Score}, _, _} = Node,
+	Score.
+
+score_by_class_or_id(Node) ->
+	{_, _, Attrs, _} = Node,
+	case lists:keyfind(<<"class">>, 1, Attrs) of % maybe foldl is better???
+		{<<"class">>, ClassBin} ->
+			ClassStr = binary_to_list(ClassBin);
+		false ->
+			ClassStr = ""
+	end,
+	case lists:keyfind(<<"id">>, 1, Attrs) of
+		{<<"id">>, IdBin} ->
+			IdStr = binary_to_list(IdBin);	
+		false ->
+			IdStr = ""
+	end,
+	% TODO: do next only if found
+	StrToScan = ClassStr++" "++IdStr, 
+	% TODO: replace with re:
+	case regexp:first_match(StrToScan, "(comment|meta|footer|footnote)") of
+			{match, _, _} ->
+				ScoreDiff = -50;
+			nomatch -> % TODO: replace with _
+				case regexp:first_match(StrToScan, "(post|hentry|entry[-]?(content|text|body)?|article[-]?(content|text|body)?)") of
+					{match, _, _} -> 
+						ScoreDiff = 25;
+					nomatch -> % TODO: replace with _
+						ScoreDiff = 0
+				end
+			% FIXME: для отладки пока ошибки не ловим
+			%{error, _} ->
+			%	error
+	end,
+	ScoreDiff.
+
+score_one_p(PNode, TreeFull) ->
+	CommaScore = count_commas(PNode),
+	ParentRef = get_parent_ref(PNode),
+	% TODO: что если ParentRef == ?ROOT_REF?
+	Parent = find_el(ParentRef, TreeFull),
+	% TODO: что если нет Parent'a?
+	CurParentScore = get_score(Parent),
+	if 
+		CurParentScore == 0 -> % e.g. parent was not scored yet
+			ParentScoreDiff = score_by_class_or_id(Parent);
+		true -> % if parent was already scored, no need to additionaly rescore it
+			ParentScoreDiff = 0
+	end,
+	modify_score(ParentRef, TreeFull, ParentScoreDiff + CommaScore + 1). % +1 за сам <p>
+
+score_tree(Tree) ->
+	PList = find_elems(<<"p">>, Tree),
+	lists:foldl(fun score_one_p/2, Tree, PList).
 
 %%%% tests %%%%
 go() -> go(<<"tr">>, "http://www.sainf.ru").
