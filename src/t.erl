@@ -1,7 +1,7 @@
 -module(t).
 
 -export([go/0, go/1, go/2, go1/2, go_repl/3, goyaws/1]).
--export([find_el/2, find_elems/2, rm_el/2, repl_el/3, repl_el/4, rm_brbr/1]).
+-export([find_el/2, find_elems/2, rm_el/2, repl_el/3, repl_el/4, rm_brbr/1, count_commas/1]).
 -export([clean_html_tree/1, addref_el/1, rmref_el/1]).
 -export([simplify_page/1, fetch_page/1, simplify_page/2]).
 -export([full_url/2, url_context/1]).
@@ -14,6 +14,15 @@
 	}).
 
 -define(ROOT_REF, root).
+
+% считает количество запятых (,) в HtmlTree
+count_commas({comment, _}) -> 0; 
+count_commas({_,_,R})      -> count_commas(R);
+count_commas({_,_,_,R})    -> count_commas(R);
+count_commas([])           -> 0; 
+count_commas([H|T])        -> count_commas(H) + count_commas(T);
+count_commas(Leaf) when is_binary(Leaf) -> lists:foldl(fun(E, S) -> if E == $, -> S+1; true->S end end, 0, binary_to_list(Leaf)).
+
 %
 % Utils to walk and operate with HtmlTree from mochiweb_html:parse()
 %
