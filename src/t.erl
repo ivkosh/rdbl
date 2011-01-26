@@ -49,9 +49,8 @@ find_el_bykey(Key, Elem, Out, SearchType) when is_tuple(Elem) ->        % Elemen
 		{Key, _, R} when SearchType == multi    -> [Elem | find_el_bykey(Key, R, Out, SearchType)];	
 		{Key, _, _}                             ->  Elem; % return first element and stop processing	
 		% if HtmlTree was modified with score tuple contains 4 elements
-		{Key, S, A, R} ->
-			#score{ref=Ref} = S,
-			if % MAYBE: Ref и так уже есть в S, по сути дублирование исключительно для того чтобы сохранить tuple 4х-элементным 
+		{Key, _S, _, R} ->
+			if 
 				SearchType == multi -> [Elem | find_el_bykey(Key, R, Out, SearchType)];	
 				true                ->  Elem
 			end;
