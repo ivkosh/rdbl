@@ -1,7 +1,6 @@
--module(t).
+-module(rdbl).
 -author('ivan@koshkin.me').
 
--export([go/0, go/1, go/2, go1/2, go_repl/3, goyaws/1]).
 -export([find_el/2, find_elems/2, rm_el/2, repl_el/3, repl_el/4, rm_brbr/1, count_commas/1]).
 -export([clean_html_tree/1, addref_el/1, rmref_el/1, modify_score/3]).
 -export([simplify_page/1, fetch_page/1, simplify_page/2]).
@@ -16,8 +15,6 @@
 		readability=0,
 		parent
 	}).
-
--define(ROOT_REF, root).
 
 -define(RE_NEGATIVE, "\\b(comment|meta|footer|footnote)\\b").
 -define(RE_POSITIVE, "\\b(post|hentry|entry[-]?(content|text|body)?|article[-]?(content|text|body)?)\\b").
@@ -36,7 +33,6 @@ count_commas(Leaf) when is_binary(Leaf) -> lists:foldl(fun(E, S) -> if E == $, -
 
 % HTML tag find: ищет в HtmlNode элемент по Key или по Ref и возвращает его
 find_el(Ref, HtmlNode) when is_reference(Ref) -> find_el_byref(Ref, HtmlNode);
-find_el(?ROOT_REF, HtmlNode)                  -> find_el_byref(?ROOT_REF, HtmlNode);
 find_el(Key, HtmlNode) when is_binary(Key)    -> find_el_bykey(Key, HtmlNode, [], first).
 % ищет все элементы и возвращает их списком 
 find_elems(Key, HtmlNode) when is_binary(Key) -> find_el_bykey(Key, HtmlNode, [], multi).
@@ -166,7 +162,7 @@ modify_score(Ref, [H|T], Score) -> [modify_score(Ref, H, Score) | modify_score(R
 % addreftree
 % добавляем в htmltree доп информацию - record score 
 %
-addref_el(Tree) -> addref_el(Tree, ?ROOT_REF). % the main parent ref is ?ROOT_REF
+addref_el(Tree) -> addref_el(Tree, make_ref()).
 %
 addref_el(R, _) when is_binary(R) -> R;
 addref_el({comment, _}, _) -> []; % dropping comments
@@ -295,7 +291,6 @@ score_by_class_or_id(Node) ->
 score_one_p(PNode, TreeFull) ->
 	CommaScore = count_commas(PNode),
 	ParentRef = get_parent_ref(PNode),
-	% TODO: что если ParentRef == ?ROOT_REF?
 	Parent = find_el(ParentRef, TreeFull),
 	% TODO: что если нет Parent'a?
 	CurParentScore = get_score(Parent),
@@ -334,50 +329,15 @@ get_max_score_ref(Tree) ->
 		end, {0, 0}, score_list(Tree)),
 	Ref.
 
-%%%% tests %%%%
-go() -> go(<<"tr">>, "http://www.sainf.ru").
-
-go(What) -> go(What, "http://www.sainf.ru").
-
-go_repl(What, NewWhat, Where) ->
-	inets:start(),
-	{ok, {_, _, Body}} = httpc:request(Where),
-	HtmlTree = mochiweb_html:parse(Body),
-	Out = repl_el(What, NewWhat, HtmlTree),
-	Out.
-
-goyaws(Where) ->
-	inets:start(),
-	{ok, {_, _, Body}} = httpc:request(Where),
-	%HtmlTree = yaws_html:h2e(binary_to_list(Body)),
-	HtmlTree = yaws_html:h2e(Body),
-	HtmlTree.
-
-go(What, Where) ->
-	inets:start(),
-	{ok, {_, _, Body}} = httpc:request(Where),
-	HtmlTree = mochiweb_html:parse(Body),
-	Out = rm_el(What, HtmlTree),
-	Out.
-
-go1(What, Where) ->
-	inets:start(),
-	{ok, {_, _, Body}} = httpc:request(Where),
-	HtmlTree = mochiweb_html:parse(Body),
-	Out = find_el(What, HtmlTree),
-	{Out, length(Out)}.
 
 %% abs url inside the same server ej: /img/image.png    
 full_url({Root, _Context}, ComponentUrl=[$/|_]) -> Root ++ ComponentUrl;
-
 %% full url ej: http://other.com/img.png
 full_url({_Root, _Context}, ComponentUrl="http://"++_)  -> ComponentUrl;
 full_url({_Root, _Context}, ComponentUrl="https://"++_) -> ComponentUrl;
 full_url({_Root, _Context}, ComponentUrl="ftp://"++_)   -> ComponentUrl;
-
 % everything else is considerer a relative path.. obviously its wrong (../img) 
-full_url({Root, Context}, ComponentUrl) ->
-    Root ++ Context ++ "/" ++ ComponentUrl.
+full_url({Root, Context}, ComponentUrl) -> Root ++ Context ++ "/" ++ ComponentUrl.
 
 % returns the  domain, and current context path. 
 % url_context("http://www.some.domain.com/content/index.html)
