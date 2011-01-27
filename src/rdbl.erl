@@ -4,14 +4,15 @@
 -module(rdbl).
 -author('ivan@koshkin.me').
 
--export([find_node/2, find_all_nodes/2, remove_node/2, brbr_to_p/1, count_commas/1]).
--export([clean_html_tree/1, init_scores/1, clean_scores/1, modify_score/3]).
--export([simplify_page/1, fetch_page/1, simplify_page/2]).
+-export([simplify_url/1, simplify_url/2, simplify_file/2, simplify_page/1, simplify_page/2]).
+
+-ifdef(DEBUG).
+-export([find_node/2, find_all_nodes/2, remove_node/2, replace_node/3, replace_node/4]).
+-export([fetch_page/1]).
+-export([brbr_to_p/1, count_commas/1, clean_html_tree/1]).
+-export([init_scores/1, clean_scores/1, modify_score/3, get_score/1, get_ref/1, get_parent_ref/1]).
 -export([full_url/2, url_context/1]).
--export([score_tree/1]).
--export([get_ref/1, get_parent_ref/1, get_score/1]).
--export([score_list/1]).
--export([replace_node/3, replace_node/4, get_max_score_ref/1]).
+-endif.
 
 %% @type score():
 %% Keeps readability score and additional references for every HTML tree element
@@ -29,20 +30,93 @@
 %%
 %% See definitions of html_node() and html_attr() in mochiweb_html.erl
 
-%% External API
+%% ===================================================================
+%%
+%% Main API functions
+%%
+%%
 
-%% @spec count_commas(html_node() | scored_html_node()) -> int()
-%% @doc counts number of commas (,) in HTML tree
-count_commas({comment, _}) -> 0; 
-count_commas({_,_,R})      -> count_commas(R);
-count_commas({_,_,_,R})    -> count_commas(R);
-count_commas([])           -> 0; 
-count_commas([H|T])        -> count_commas(H) + count_commas(T);
-count_commas(Leaf) when is_binary(Leaf) -> lists:foldl(fun(E, S) -> if E == $, -> S+1; true->S end end, 0, binary_to_list(Leaf)).
+%% @spec simplify_url(string()) -> string()
+%% @doc fetches url, simplifies its content and returns simplified page as a string()
+%% @doc example: simplify_url("http://news.yandex.ru/") -> SimplifiedPageText
+simplify_url(Url) ->
+	Body = fetch_page(Url), % TODO: делать в отдельном процессе и слать сообщение по завершению
+	Ctx = url_context(Url),
+	simplify_page(Body, Ctx).
 
-%
-% Utils to walk and operate with HTML tree (with type of html_node() and scored_html_node())
-%
+%% @spec simplify_url(string(), string()) -> ok
+%% @doc fetches url, simplifies its content and saves to file
+%% @doc example: simplify_url("http://news.yandex.ru/", "out.html")
+simplify_url(Url, FileName) ->
+	Page = simplify_url(Url),
+	{ok, F} = file:open(FileName, [binary, write]), % TODO: check if file open
+	file:write(F, Page),
+	file:close(F),
+	ok.
+
+%% @spec simplify_file(string(), string()) -> ok
+%% @doc reads file from disk, simplifies its content and saves to file
+%% @doc example: simplify_url("index.html", "out.html")
+simplify_file(FileNameIn, FileNameOut) ->
+	{ok, Fin}  = file:open(FileNameIn, [binary, read]), % TODO: check if file open
+	{ok, Html} = file:read_file(Fin),
+	file:close(Fin),
+	Page = simplify_page(Html),
+	{ok, Fout} = file:open(FileNameOut, [binary, write]),
+	file:write(Fout, Page),
+	file:close(Fout),
+	ok.
+
+%% @spec simplify_page(string()) -> string()
+%% @doc wrapper for simplify_page/2 (starts with empty url context)
+simplify_page(Body) ->
+	simplify_page(Body, {"", ""}). % empty context
+
+%% @spec simplify_page(string(), {string(), string}) -> string()
+%% @doc main function
+%% @doc takes document contens (Body) and document context (Ctx, see url_context/1)
+%% @doc returns simplified page as a string()
+simplify_page(Body, Ctx) ->
+	try mochiweb_html:parse(Body) of % parse() will not work if Body contains no html tags
+		TreeOrig -> 
+			TitleStr = get_title(TreeOrig),
+			% TODO: save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request to
+			{_, _, TreeBody} = find_node(<<"body">>, TreeOrig), 
+			ScoredTree = score_tree(
+				init_scores(
+					% converting urls in <a> and <img> to absolute urls
+					replace_node(<<"a">>,   <<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
+					replace_node(<<"img">>, <<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
+					clean_html_tree(TreeBody)))
+				)
+			),
+			OptimumRef = get_max_score_ref(ScoredTree),
+			ContentBody = clean_scores(find_node(OptimumRef, ScoredTree)),
+			TreeOut = {
+				<<"html">>, [], [
+					{
+						<<"head">>, [], [{<<"title">>, [], TitleStr}]
+					},
+					{
+						<<"body">>, [], 
+						%[ {<<"h1">>, [], TitleStr} ] ++ 
+						[ContentBody]
+					}
+				]
+			},
+			mochiweb_html:to_html(TreeOut)
+	catch 
+		error:{badmatch,_} -> 
+			% we can't simplify it, just return original text
+			Body
+			% MAYBE: mochiweb_html:parse("<html><body>"++Body++"</body></html>") 
+	end. 
+
+%% ===================================================================
+%%
+%% Utility functions to walk and operate with html_node() and scored_html_node()
+%%
+%%
 
 %% @spec find_node(reference() | binary(), html_node() | scored_html_node()) -> html_node() | scored_html_node()
 %% @doc returns first node from HTML tree with specific HTML tag. If tree is scored, search can be done by node reference
@@ -89,7 +163,6 @@ find_node_bykey(Key, [H|T], SearchType) ->
 			find_node_bykey(Key, T, SearchType)
 	end.
 			
-
 %% @spec find_node_by_ref(reference(), scored_html_node()) -> scored_html_node()
 %% @doc helper function for find_node()
 find_node_byref(_Ref, HtmlNode) when is_binary(HtmlNode) -> []; % leaf is not an option
@@ -124,19 +197,6 @@ remove_node(Key, {E, S, A, R}) -> {E, S, A, remove_node(Key, R)}; % continue to 
 remove_node(_, []) -> [];
 remove_node(Key, [H|T]) -> [remove_node(Key, H) | remove_node(Key, T)]. % processing list
 
-%% @spec brbr_to_p(html_node() | scored_html_node()) -> html_node() | scored_html_node()
-%% @doc replaces more than 2 <br>s in row with <p>
-brbr_to_p(NodeIn) when is_binary(NodeIn) -> NodeIn;
-brbr_to_p({comment, _})                  -> []; % dropping comments
-brbr_to_p({E,    A, R}) -> {E,    A, brbr_to_p(R)}; % continue to subtree
-brbr_to_p({E, S, A, R}) -> {E, S, A, brbr_to_p(R)}; 
-brbr_to_p([]) -> [];
-brbr_to_p([{<<"br">>,_,_},   {<<"br">>,_,_}   | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]); % Replacing <br><br> with <p>,
-brbr_to_p([{<<"p">>,_,_},    {<<"br">>,_,_}   | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]); % if more than two <br> in row, replacing all.
-brbr_to_p([{<<"br">>,_,_,_}, {<<"br">>,_,_,_} | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]); % Do the same for scored elements. 
-brbr_to_p([{<<"p">>,_,_,_},  {<<"br">>,_,_,_} | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]);
-brbr_to_p([H|T]) -> [brbr_to_p(H) | brbr_to_p(T)]. % processing list recursively
-
 %% @spec replace_node(binary(), binary(), fun( [html_attr()] ) -> [html_attr()], html_node() | scored_html_node()) -> html_node() | scored_html_node().
 %% @doc HTML tag & attribute replacer.
 %% @doc Func is used to transform list of tag attributes: fun(AttrList) -> ModifiedAttrList
@@ -155,25 +215,38 @@ replace_node(Key, NewKey, Func, {E, S, A, R}) -> {E, S, A, replace_node(Key, New
 replace_node(_, _, _, []) -> [];
 replace_node(Key, NewKey, Func, [H|T]) -> [replace_node(Key, NewKey, Func, H) | replace_node(Key, NewKey, Func, T)]. % processing list recursively
 
-%% @spec modify_score(reference(), scored_html_node(), int()) -> scored_html_node()
-%% @doc modify readability score for specific element on scored tree. Score is added to current node score 
-%% @doc e.g. int() is ScoreDiff, to subtract score for element pass negative int()
+%% @spec brbr_to_p(html_node() | scored_html_node()) -> html_node() | scored_html_node()
+%% @doc replaces more than 2 <br>s in row with <p>
+brbr_to_p(NodeIn) when is_binary(NodeIn) -> NodeIn;
+brbr_to_p({comment, _})                  -> []; % dropping comments
+brbr_to_p({E,    A, R}) -> {E,    A, brbr_to_p(R)}; % continue to subtree
+brbr_to_p({E, S, A, R}) -> {E, S, A, brbr_to_p(R)}; 
+brbr_to_p([]) -> [];
+brbr_to_p([{<<"br">>,_,_},   {<<"br">>,_,_}   | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]); % Replacing <br><br> with <p>,
+brbr_to_p([{<<"p">>,_,_},    {<<"br">>,_,_}   | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]); % if more than two <br> in row, replacing all.
+brbr_to_p([{<<"br">>,_,_,_}, {<<"br">>,_,_,_} | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]); % Do the same for scored elements. 
+brbr_to_p([{<<"p">>,_,_,_},  {<<"br">>,_,_,_} | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]);
+brbr_to_p([H|T]) -> [brbr_to_p(H) | brbr_to_p(T)]. % processing list recursively
+
+%% @spec count_commas(html_node() | scored_html_node()) -> int()
+%% @doc counts number of commas (,) in HTML tree
+count_commas({comment, _}) -> 0; 
+count_commas({_,_,R})      -> count_commas(R);
+count_commas({_,_,_,R})    -> count_commas(R);
+count_commas([])           -> 0; 
+count_commas([H|T])        -> count_commas(H) + count_commas(T);
+count_commas(Leaf) when is_binary(Leaf) -> lists:foldl(fun(E, S) -> if E == $, -> S+1; true->S end end, 0, binary_to_list(Leaf)).
+
+%% ===================================================================
 %%
-modify_score(_, Leaf, _) when is_binary(Leaf) -> Leaf;
-modify_score(_, {comment, _}, _) -> []; 
-modify_score(Ref, {Key, #score{ref=Ref, readability=Rdbl, parent=ParentRef}, A, R}, Score) -> {Key, #score{ref=Ref, readability=Rdbl+Score, parent=ParentRef}, A, R};
-modify_score(Ref, {E, S, A, R}, Score) -> {E, S, A, modify_score(Ref, R, Score)}; 
-modify_score(_, [], _) -> [];
-modify_score(Ref, [H|T], Score) -> [modify_score(Ref, H, Score) | modify_score(Ref, T, Score)].
+%% Functions to operate scored_html_tree() - add, modify and calculate score
+%%
+%%
 
 %% @spec init_scores(html_node()) -> scored_html_node()
 %% @doc transforms html_node() to scored_html_node(). It now has 4 elements in tuple (not 3 as in mochiweb_html type), 
 %% @doc the second element in tuple is Score - record of #score, containing readability score, current element ref
 %% @doc and ref to parent of current element (see -record(score, ...) below)
-%%
-% addreftree
-% добавляем в htmltree доп информацию - record score 
-%
 init_scores(Tree) -> init_scores(Tree, make_ref()). % adding reference for topmost element too
 %
 init_scores(R, _) when is_binary(R) -> R;
@@ -191,23 +264,22 @@ clean_scores({E, A, Rest}) -> {E, A, clean_scores(Rest)};
 clean_scores([]) -> [];
 clean_scores([H|T]) -> [clean_scores(H) | clean_scores(T)]. 
 
-%% @spec clean_html_tree(html_node() | scored_html_node()) -> html_node() | scored_html_node()
-%% @doc cleans first-level unreadable junk from html tree
-%
-clean_html_tree(Tree) -> % prepDocument in readability.js
-	% TODO: add: find max <frame> in frameset and use it as document
-	brbr_to_p( 
-		remove_node([<<"style">>, <<"link">>, <<"script">>, <<"noscript">>, <<"form">>, <<"object">>, <<"iframe">>], Tree)
-	).  
+%% @spec modify_score(reference(), scored_html_node(), int()) -> scored_html_node()
+%% @doc modify readability score for specific element on scored tree. Score is added to current node score 
+%% @doc e.g. int() is ScoreDiff, to subtract score for element pass negative int()
+modify_score(_, Leaf, _) when is_binary(Leaf) -> Leaf;
+modify_score(_, {comment, _}, _) -> []; 
+modify_score(Ref, {Key, #score{ref=Ref, readability=Rdbl, parent=ParentRef}, A, R}, Score) -> {Key, #score{ref=Ref, readability=Rdbl+Score, parent=ParentRef}, A, R};
+modify_score(Ref, {E, S, A, R}, Score) -> {E, S, A, modify_score(Ref, R, Score)}; 
+modify_score(_, [], _) -> [];
+modify_score(Ref, [H|T], Score) -> [modify_score(Ref, H, Score) | modify_score(Ref, T, Score)].
 
-%% @spec get_title(html_node() | scored_html_node()) -> binary()
-get_title(Tree) ->
-	{_, _, TitleStr} = find_node(<<"title">>, Tree),
-	TitleStr.
 
-% Returns html-page
-% TODO: save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request to
-
+%% ===================================================================
+%%
+%% Internal and helper functions
+%%
+%%
 
 %% @spec fetch_page(string()) -> string()
 %% @doc fetches url and returns its content as a string()
@@ -222,64 +294,24 @@ fetch_page(Url) ->
 			io_lib:format(<<"<html><head><title>Error</title></head><body>Cannot fetch ~s - ~p</body></html>">>, [Url, ErrVal])
 	end.
 
+%% @spec clean_html_tree(html_node() | scored_html_node()) -> html_node() | scored_html_node()
+%% @doc cleans first-level unreadable junk from html tree
+clean_html_tree(Tree) -> % prepDocument in readability.js
+	% TODO: add: find max <frame> in frameset and use it as document
+	brbr_to_p( 
+		remove_node([<<"style">>, <<"link">>, <<"script">>, <<"noscript">>, <<"form">>, <<"object">>, <<"iframe">>], Tree)
+	).  
+
+%% @spec get_title(html_node() | scored_html_node()) -> binary()
+get_title(Tree) ->
+	{_, _, TitleStr} = find_node(<<"title">>, Tree),
+	TitleStr.
+
 %% @spec to_abs_url({binary(), binary()}, string()) -> {binary(), binary()}
-%% @doc helper function for simplify_page() - converts href & src in element attr to absolute path
+%% @doc helper function for simplify_page/2 - converts href & src in element attr to absolute path
 to_abs_url({<<"src">>, U}, Ctx)  -> {<<"src">>,  list_to_binary(full_url(Ctx, binary_to_list(U)))};
 to_abs_url({<<"href">>, U}, Ctx) -> {<<"href">>, list_to_binary(full_url(Ctx, binary_to_list(U)))};
 to_abs_url(A, _) -> A.
-
-%% @spec simplify_page(string()) -> string()
-%% @doc main API function.
-%% @doc fetches url, simplifies its content and returns simplified page as a string()
-%%
-%% @doc Example: simplify_page("http://news.yandex.ru/") -> SimplifiedPageText
-%%
-simplify_page(Url) ->
-	Body = fetch_page(Url), % TODO: делать в отдельном процессе и слать сообщение по завершению
-	Ctx = url_context(Url),
-	try mochiweb_html:parse(Body) of % parse() will not work if Body contains no html tags
-		TreeOrig -> 
-			TitleStr = get_title(TreeOrig),
-			{_, _, TreeBody} = find_node(<<"body">>, TreeOrig), 
-			ScoredTree = score_tree(
-				init_scores(
-					% converting urls in <a> and <img> to absolute urls
-					replace_node(<<"a">>,   <<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
-					replace_node(<<"img">>, <<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
-					clean_html_tree(TreeBody)))
-				)
-			),
-			OptimumRef = get_max_score_ref(ScoredTree),
-			ContentBody = clean_scores(find_node(OptimumRef, ScoredTree)),
-			TreeOut = {
-				<<"html">>, [], [
-					{
-						<<"head">>, [], [{<<"title">>, [], TitleStr}]
-					},
-					{
-						<<"body">>, [], 
-						%[ {<<"h1">>, [], TitleStr} ] ++ 
-						[ContentBody]
-					}
-				]
-			},
-			mochiweb_html:to_html(TreeOut)
-	catch 
-		error:{badmatch,_} -> 
-			% we can't simplify it, just return original text
-			Body
-			% MAYBE: mochiweb_html:parse("<html><body>"++Body++"</body></html>") 
-	end. 
-
-%% @spec simplify_page(string(), string()) -> string()
-%% @doc fetches url, simplifies its content and saves to file
-simplify_page(Url, FileName) ->
-	Page = simplify_page(Url),
-	{ok, F} = file:open(FileName, [binary, write]),
-	file:write(F, Page),
-	file:close(F).
-
-%TODO: %simplify_page(InFile, OutFile) 
 
 %% @spec get_parent_ref(scored_html_node()) -> reference()
 get_parent_ref(Node) ->
@@ -364,7 +396,6 @@ score_list({_, _, _, R}) -> score_list(R);
 score_list([]) -> []; 
 score_list([H|T]) -> score_list(H) ++ score_list(T). 
 
-
 %% @spec url_context(string()) -> {string(), string()}
 %% @doc returns the  domain, and current context path. 
 %% @doc example: url_context("http://www.some.domain.com/content/index.html) -> {"http://www.some.domain.com", "/content"}
@@ -382,9 +413,3 @@ full_url({_Root, _Context}, ComponentUrl="ftp://"++_)   -> ComponentUrl;
 full_url({Root, Context}, ComponentUrl) -> Root ++ Context ++ "/" ++ ComponentUrl. % everything else is a relative path
 
 
-%% mochiweb_html:tokens (???)
-%% mochiweb_html:to_html
-%
-% ?TODO: поменять местами в scored tuple S и A (более естественно) и убрать четвертый параметр Ref 
-% отличить scored от unscored будет легко (хотя в этом случае оба вида будут 3х элементными tuple): 
-% - если третий параметр list, то значит unscored, если tuple (record) то scored
