@@ -1,0 +1,12 @@
+- fix bug with habrahabr.ru parsing (sometimes comment is selected instead of article body).
+- add charset support - save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request
+
+- do fetch_page in separate process
+- optimize remove_node([Keys]) - remove all keys from list in one walk of html tree
+- rewrite fetch_page/1 - do inets:start() and ssl:start() only if not started, cache fetched pages in ets by url
+- add support of documents with frames - find max <frame> in frameset and use it as document
+
+- mochiweb_html:parse threats &nbsp; incorrectly - it is converted to unicode symbol russian V in cp1251
+
+- improve readability score algorithm
+- improve pre-score clean-up

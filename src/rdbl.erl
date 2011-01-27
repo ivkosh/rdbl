@@ -83,7 +83,7 @@ simplify_page(Body, Ctx) ->
 	try mochiweb_html:parse(Body) of % parse() will not work if Body contains no html tags
 		TreeOrig -> 
 			TitleStr = get_title(TreeOrig),
-			% TODO: save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request to
+			% TODO: save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request
 			{_, _, TreeBody} = find_node(<<"body">>, TreeOrig), 
 			ScoredTree = score_tree(
 				init_scores(
