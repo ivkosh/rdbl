@@ -1,7 +1,10 @@
+%% @author Ivan Koshkin <ivan@koshkin.me>
+%% @copyright 2011
+
 -module(rdbl).
 -author('ivan@koshkin.me').
 
--export([find_node/2, find_all_nodes/2, rm_el/2, repl_el/3, repl_el/4, rm_brbr/1, count_commas/1]).
+-export([find_node/2, find_all_nodes/2, remove_node/2, repl_el/3, repl_el/4, brbr_to_p/1, count_commas/1]).
 -export([clean_html_tree/1, addref_el/1, rmref_el/1, modify_score/3]).
 -export([simplify_page/1, fetch_page/1, simplify_page/2]).
 -export([full_url/2, url_context/1]).
@@ -29,7 +32,7 @@ count_commas([H|T])        -> count_commas(H) + count_commas(T);
 count_commas(Leaf) when is_binary(Leaf) -> lists:foldl(fun(E, S) -> if E == $, -> S+1; true->S end end, 0, binary_to_list(Leaf)).
 
 %
-% Utils to walk and operate with HtmlTree from mochiweb_html:parse()
+% Utils to walk and operate with HTML tree (html_node() from mochiweb_html:parse())
 %
 
 %% @spec find_node(reference() | binary(), html_node()) -> html_node()
@@ -41,13 +44,13 @@ find_node(Key, HtmlNode) when is_binary(Key)    -> find_node_bykey(Key, HtmlNode
 %% @doc the same as find_node(), but returns all nodes with specific tag as a list 
 find_all_nodes(Key, HtmlNode) when is_binary(Key) -> find_node_bykey(Key, HtmlNode, multi).
 
-%% @spec find_node_by_key(binary(), html_node(), first | multi)
+%% @spec find_node_by_key(binary(), html_node(), first | multi) -> html_node() | [html_node()]
 %% @doc helper function for find_node() and find_all_nodes()
 %% @doc returns: 
 %% @doc - first element found as html_node() if SearchType != multi 
 %% @doc - list of all found elements as [html_node()] if SearchType == multi
 find_node_bykey(_, HtmlNode, _)       when is_binary(HtmlNode) -> [];  % don't searching for leafs
-find_node_bykey(_, {comment, _}, _) -> [];                             % comments in mochiweb_html:parse are 2-element tuples, dropping them
+find_node_bykey(_, {comment, _}, _) -> [];    % comments in mochiweb_html:parse are 2-element tuples, dropping them
 find_node_bykey(Key, Elem, SearchType) when is_tuple(Elem) ->        % Element found
 	case Elem of
 		% element found (key in current Elem equals to Key)
@@ -78,58 +81,57 @@ find_node_bykey(Key, [H|T], SearchType) ->
 	end.
 			
 
-%
-% find_node_by_ref(ref, HtmlTree)
-%
+%% @spec find_node_by_ref(reference(), html_node()) -> html_node()
+%% @doc helper function for find_node()
 find_node_byref(_Ref, HtmlNode) when is_binary(HtmlNode) -> []; % leaf is not an option
 find_node_byref(_, {comment, _}) -> [];                         % comment is not an option
-% если ищем по ref, то тут во-первых всегда first, а во-вторых всегда модифицированное дерево, поэтому не паримся с доп проверками
-find_node_byref(Ref, {Key, #score{ref=Ref}=S, A, R}) -> {Key, S, A, R};
-find_node_byref(Ref, {_E, _Score, _A, R}) -> find_node_byref(Ref, R); % all other (not found) - just continue with the rest part of tree
+%tree is already modified, so we have 4-elem tuple in html_node()
+find_node_byref(Ref, {Key, #score{ref=Ref}=S, A, R}) -> {Key, S, A, R}; % found 
+find_node_byref(Ref, {_E, _Score, _A, R}) -> find_node_byref(Ref, R); % all other (not found) - continue
 % Lists
 find_node_byref(_, []) -> [];
-find_node_byref(Ref, [H|T]) -> 
+find_node_byref(Ref, [H|T]) -> % walk list if it is not empty 
 	E1 = find_node_byref(Ref, H),
 	if 
-		is_tuple(E1) ->
-			E1; % нашли, дальше не интересно
-		true ->
-			find_node_byref(Ref, T)
-	end. % walk list if it is not empty
+		is_tuple(E1) -> E1; % found it
+		true         -> find_node_byref(Ref, T)
+	end. 
 
-% HTML tag remover: rm_el(Key, HtmlNode) 
-% удаляет из HtmlNode поддеревья вида Key и comment, возвращает очищенное HtmlNode
-% example: rm_el(<<"script">>, HtmlTree) -> HtmlTreeWithoutScripts
-%
-% Если Key - это список, то значит надо удалить из дерева все тэги из списка:
-rm_el([], HtmlTree) -> HtmlTree;
-rm_el([KeyH|KeyT], HtmlTree) ->         % TODO: неэфективно - дерево пробегается столько раз, какова длина списка ключей.
-	rm_el(KeyH, rm_el(KeyT, HtmlTree));	% переписать rm_el([..],_) чтобы он мог работать со списком Key и выкидывать все за один проход
-% Key не список:
-rm_el(_, NodeIn) when is_binary(NodeIn) -> NodeIn;
-rm_el(_, {comment, _}) -> []; % dropping comments
-rm_el(Key, {Key, _, _}) -> []; % Key found, dropping subtree
-rm_el(Key, {Key, _, _, _}) -> []; % Key found, dropping subtree
-rm_el(Key, {E, A, R}) -> {E, A, rm_el(Key, R)}; % continue to subtree
-rm_el(Key, {E, S, A, R}) -> {E, S, A, rm_el(Key, R)}; % continue to subtree
-rm_el(_, []) -> [];
-rm_el(Key, [H|T]) -> [rm_el(Key, H) | rm_el(Key, T)]. % processing list recursively
+%% @spec remove_node(binary() | [binary()], html_node()) -> html_node()
+%% @doc HTML tag remover. Removes from node all subtrees with Key and returns cleaned html_node()
+%% @doc example: remove_node(<<"script">>, HtmlTree) -> HtmlTreeWithoutScripts
+% if Key is a list - removing all list elements from tree
+remove_node([], HtmlTree) -> HtmlTree;
+% TODO: неэфективно - дерево пробегается столько раз, какова длина списка ключей.
+% переписать remove_node([..],_) чтобы он мог работать со списком Key и выкидывать все за один проход
+remove_node([KeyH|KeyT], HtmlTree) -> remove_node(KeyH, remove_node(KeyT, HtmlTree));	
+% if Key is not a list:
+remove_node(_, NodeIn) when is_binary(NodeIn) -> NodeIn;
+remove_node(_, {comment, _}) -> []; % dropping comments
+remove_node(Key, {Key, _, _}) -> []; % Key found, dropping subtree
+remove_node(Key, {Key, _, _, _}) -> []; % Key found, dropping subtree
+remove_node(Key, {E, A, R}) -> {E, A, remove_node(Key, R)}; % continue to subtree
+remove_node(Key, {E, S, A, R}) -> {E, S, A, remove_node(Key, R)}; % continue to subtree
+remove_node(_, []) -> [];
+remove_node(Key, [H|T]) -> [remove_node(Key, H) | remove_node(Key, T)]. % processing list of html_node()
 
-% Если подряд идет два или больше <br>, заменяем на <p>
-rm_brbr(NodeIn) when is_binary(NodeIn) -> NodeIn;
-rm_brbr({comment, _})                  -> []; % dropping comments
-rm_brbr({E,    A, R}) -> {E,    A, rm_brbr(R)}; % continue to subtree
-rm_brbr({E, S, A, R}) -> {E, S, A, rm_brbr(R)}; 
-rm_brbr([]) -> [];
-rm_brbr([{<<"br">>,_,_},   {<<"br">>,_,_}   | T]) -> rm_brbr([{<<"p">>,[],[]} | T]); % Replacing <br><br> with <p>,
-rm_brbr([{<<"p">>,_,_},    {<<"br">>,_,_}   | T]) -> rm_brbr([{<<"p">>,[],[]} | T]); % if more than two <br> in row, replacing all.
-rm_brbr([{<<"br">>,_,_,_}, {<<"br">>,_,_,_} | T]) -> rm_brbr([{<<"p">>,[],[]} | T]); % Do the same for scored elements. 
-rm_brbr([{<<"p">>,_,_,_},  {<<"br">>,_,_,_} | T]) -> rm_brbr([{<<"p">>,[],[]} | T]);
-rm_brbr([H|T]) -> [rm_brbr(H) | rm_brbr(T)]. % processing list recursively
+%% @spec brbr_to_p(html_node()) -> html_node()
+%% @doc replaces more than 2 <br>s in row with <p>
+brbr_to_p(NodeIn) when is_binary(NodeIn) -> NodeIn;
+brbr_to_p({comment, _})                  -> []; % dropping comments
+brbr_to_p({E,    A, R}) -> {E,    A, brbr_to_p(R)}; % continue to subtree
+brbr_to_p({E, S, A, R}) -> {E, S, A, brbr_to_p(R)}; 
+brbr_to_p([]) -> [];
+brbr_to_p([{<<"br">>,_,_},   {<<"br">>,_,_}   | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]); % Replacing <br><br> with <p>,
+brbr_to_p([{<<"p">>,_,_},    {<<"br">>,_,_}   | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]); % if more than two <br> in row, replacing all.
+brbr_to_p([{<<"br">>,_,_,_}, {<<"br">>,_,_,_} | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]); % Do the same for scored elements. 
+brbr_to_p([{<<"p">>,_,_,_},  {<<"br">>,_,_,_} | T]) -> brbr_to_p([{<<"p">>,[],[]} | T]);
+brbr_to_p([H|T]) -> [brbr_to_p(H) | brbr_to_p(T)]. % processing list recursively
 
-% HTML tag replacer:
-% example: repl_el(<<"br">>, <<"p">>, HtmlTree) -> HtmlTreeWithBrReplacedToP
-repl_el(Key, NewKey, Node) -> repl_el(Key, NewKey, [], Node). % by default no NewAttr
+%% @spec repl_el(binary(), binary(), [html_attr()], html_node()) -> html_node().
+%% @doc HTML tag replacer:
+%% @doc example: repl_el(<<"br">>, <<"p">>, HtmlTree) -> HtmlTreeWithBrReplacedToP
+repl_el(Key, NewKey, Node) -> repl_el(Key, NewKey, [], Node). % by default removing Attrs
 %
 repl_el(_K, _NewKey, _NewAttr, NodeIn) when is_binary(NodeIn) -> NodeIn;
 repl_el(_K, _NewKey, _NewAttr, {comment, _}) -> []; % dropping comments
@@ -187,8 +189,8 @@ rmref_el([H|T]) -> [rmref_el(H) | rmref_el(T)]. % processing list recursively
 % и/или из httpc:request
 clean_html_tree(Tree) -> % prepDocument in readability.js
 	% TODO: add: find max <frame> in frameset and use it as document
-	rm_brbr( % заменяем <br><br> на <p>
-		rm_el([<<"style">>, <<"link">>, <<"script">>, <<"noscript">>,
+	brbr_to_p( % заменяем <br><br> на <p>
+		remove_node([<<"style">>, <<"link">>, <<"script">>, <<"noscript">>,
 			<<"form">>, <<"object">>, <<"iframe">>], Tree)
 	).  % h1, h2?
 	% add more clean-up calls if needed
@@ -309,13 +311,12 @@ score_tree(Tree) ->
 	lists:foldl(fun score_one_p/2, Tree, PList).
 
 
-score_list(Tree) -> score_list(Tree, []).
-score_list(HtmlNode, _Out) when is_binary(HtmlNode) -> []; %Out; % leaf ?TODO: or []?
-score_list({comment, _}, _) -> [];                             % comments in mochiweb_html:parse are 2-element tuples, dropping them
-score_list({_, #score{readability=Rdbl, ref=Ref}, _, R}, Out) -> [{Ref, Rdbl} | score_list(R, Out)];	
-score_list({_, _, _, R}, Out) -> score_list(R, Out);	
-score_list([], _Out) -> []; %Out; % or just []?
-score_list([H|T], Out) -> score_list(H, Out) ++ score_list(T, Out). 
+score_list(HtmlNode) when is_binary(HtmlNode) -> []; % leaf
+score_list({comment, _}) -> [];       
+score_list({_, #score{readability=Rdbl, ref=Ref}, _, R}) -> [{Ref, Rdbl} | score_list(R)];	
+score_list({_, _, _, R}) -> score_list(R);	
+score_list([]) -> []; 
+score_list([H|T]) -> score_list(H) ++ score_list(T). 
 
 get_max_score_ref(Tree) ->
 	{Ref, _MaxScore} = lists:foldl(
