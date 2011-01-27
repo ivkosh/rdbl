@@ -1,7 +1,7 @@
 -module(rdbl).
 -author('ivan@koshkin.me').
 
--export([find_el/2, find_elems/2, rm_el/2, repl_el/3, repl_el/4, rm_brbr/1, count_commas/1]).
+-export([find_node/2, find_all_nodes/2, rm_el/2, repl_el/3, repl_el/4, rm_brbr/1, count_commas/1]).
 -export([clean_html_tree/1, addref_el/1, rmref_el/1, modify_score/3]).
 -export([simplify_page/1, fetch_page/1, simplify_page/2]).
 -export([full_url/2, url_context/1]).
@@ -9,7 +9,7 @@
 -export([get_ref/1, get_parent_ref/1, get_score/1]).
 -export([score_list/1]).
 
-% хранит readability score для каждого элемента дерева
+% Keeps readability score for every HTML tree element
 -record(score, {
 		ref,
 		readability=0,
@@ -19,7 +19,8 @@
 -define(RE_NEGATIVE, "\\b(comment|meta|footer|footnote)\\b").
 -define(RE_POSITIVE, "\\b(post|hentry|entry[-]?(content|text|body)?|article[-]?(content|text|body)?)\\b").
 
-% считает количество запятых (,) в HtmlTree
+%% @spec count_commas(html_node()) -> int()
+%% @doc counts number of commas (,) in HTML tree
 count_commas({comment, _}) -> 0; 
 count_commas({_,_,R})      -> count_commas(R);
 count_commas({_,_,_,R})    -> count_commas(R);
@@ -31,68 +32,70 @@ count_commas(Leaf) when is_binary(Leaf) -> lists:foldl(fun(E, S) -> if E == $, -
 % Utils to walk and operate with HtmlTree from mochiweb_html:parse()
 %
 
-% HTML tag find: ищет в HtmlNode элемент по Key или по Ref и возвращает его
-find_el(Ref, HtmlNode) when is_reference(Ref) -> find_el_byref(Ref, HtmlNode);
-find_el(Key, HtmlNode) when is_binary(Key)    -> find_el_bykey(Key, HtmlNode, [], first).
-% ищет все элементы и возвращает их списком 
-find_elems(Key, HtmlNode) when is_binary(Key) -> find_el_bykey(Key, HtmlNode, [], multi).
+%% @spec find_node(reference() | binary(), html_node()) -> html_node()
+%% @doc returns first node from HTML tree with specific HTML tag. If tree is scored, search can be done by node reference
+find_node(Ref, HtmlNode) when is_reference(Ref) -> find_node_byref(Ref, HtmlNode);
+find_node(Key, HtmlNode) when is_binary(Key)    -> find_node_bykey(Key, HtmlNode, [], first).
 
-%
-% find_el_by_key(Key, HtmlTree, OutAcc, SearchType=first|multi)
-%
-% returns: 
-% - first element found as a tuple if SearchType != multi 
-% - list of all found elements (list of tuples) if SearchType == multi
-find_el_bykey(_, HtmlNode, Out, multi) when is_binary(HtmlNode) -> Out; % leaf
-find_el_bykey(_, HtmlNode, _, _)       when is_binary(HtmlNode) -> [];  % if first element search leaf is not an option
-find_el_bykey(_, {comment, _}, _, _) -> [];                             % comments in mochiweb_html:parse are 2-element tuples, dropping them
-find_el_bykey(Key, Elem, Out, SearchType) when is_tuple(Elem) ->        % Element found, adding to Out 
+%% @spec find_all_nodes(binary(), html_node()) -> [html_node()]
+%% @doc the same as find_node(), but returns all nodes with specific tag as a list 
+find_all_nodes(Key, HtmlNode) when is_binary(Key) -> find_node_bykey(Key, HtmlNode, [], multi).
+
+%% @spec find_node_by_key(binary(), html_node(), [html_node()], first | multi)
+%% @doc helper function for find_node() and find_all_nodes()
+%% @doc returns: 
+%% @doc - first element found as html_node() if SearchType != multi 
+%% @doc - list of all found elements as [html_node()] if SearchType == multi
+find_node_bykey(_, HtmlNode, Out, multi) when is_binary(HtmlNode) -> Out; % leaf
+find_node_bykey(_, HtmlNode, _, _)       when is_binary(HtmlNode) -> [];  % if first element search leaf is not an option
+find_node_bykey(_, {comment, _}, _, _) -> [];                             % comments in mochiweb_html:parse are 2-element tuples, dropping them
+find_node_bykey(Key, Elem, Out, SearchType) when is_tuple(Elem) ->        % Element found
 	case Elem of
 		% element found (key in current Elem equals to Key)
-		{Key, _, R} when SearchType == multi    -> [Elem | find_el_bykey(Key, R, Out, SearchType)];	
+		{Key, _, R} when SearchType == multi    -> [Elem | find_node_bykey(Key, R, Out, SearchType)]; % adding to Out
 		{Key, _, _}                             ->  Elem; % return first element and stop processing	
 		% if HtmlTree was modified with score tuple contains 4 elements
 		{Key, _S, _, R} ->
 			if 
-				SearchType == multi -> [Elem | find_el_bykey(Key, R, Out, SearchType)];	
+				SearchType == multi -> [Elem | find_node_bykey(Key, R, Out, SearchType)];	
 				true                ->  Elem
 			end;
 		% key in current Elem not equalt to Key, e.g. still not found, continue search in the rest part of tree
-		{_, _, R}    -> find_el_bykey(Key, R, Out, SearchType); 
-		{_, _, _, R} -> find_el_bykey(Key, R, Out, SearchType);
+		{_, _, R}    -> find_node_bykey(Key, R, Out, SearchType); 
+		{_, _, _, R} -> find_node_bykey(Key, R, Out, SearchType);
 		_            -> [] % unsupported case
 	end;
-% Lists
-find_el_bykey(_, [], Out, _) -> Out;
-find_el_bykey(Key, [H|T], Out, SearchType) -> 
-	E1 = find_el_bykey(Key, H, Out, SearchType),
+% Lists of html_node()
+find_node_bykey(_, [], Out, _) -> Out;
+find_node_bykey(Key, [H|T], Out, SearchType) -> 
+	E1 = find_node_bykey(Key, H, Out, SearchType),
 	if 
 		SearchType == multi ->
-			E1 ++ find_el_bykey(Key, T, Out, SearchType); % walk rest part of listlist if it is not empty
+			E1 ++ find_node_bykey(Key, T, Out, SearchType); % walk rest part of listlist if it is not empty
 		is_tuple(E1) -> % SearchType is not multi (e.g. first) AND E1 is tuple - we found it!
 			E1;
 		true -> % otherwise continue search
-			find_el_bykey(Key, T, Out, SearchType)
+			find_node_bykey(Key, T, Out, SearchType)
 	end.
 			
 
 %
-% find_el_by_ref(ref, HtmlTree)
+% find_node_by_ref(ref, HtmlTree)
 %
-find_el_byref(_Ref, HtmlNode) when is_binary(HtmlNode) -> []; % leaf is not an option
-find_el_byref(_, {comment, _}) -> [];                         % comment is not an option
+find_node_byref(_Ref, HtmlNode) when is_binary(HtmlNode) -> []; % leaf is not an option
+find_node_byref(_, {comment, _}) -> [];                         % comment is not an option
 % если ищем по ref, то тут во-первых всегда first, а во-вторых всегда модифицированное дерево, поэтому не паримся с доп проверками
-find_el_byref(Ref, {Key, #score{ref=Ref}=S, A, R}) -> {Key, S, A, R};
-find_el_byref(Ref, {_E, _Score, _A, R}) -> find_el_byref(Ref, R); % all other (not found) - just continue with the rest part of tree
+find_node_byref(Ref, {Key, #score{ref=Ref}=S, A, R}) -> {Key, S, A, R};
+find_node_byref(Ref, {_E, _Score, _A, R}) -> find_node_byref(Ref, R); % all other (not found) - just continue with the rest part of tree
 % Lists
-find_el_byref(_, []) -> [];
-find_el_byref(Ref, [H|T]) -> 
-	E1 = find_el_byref(Ref, H),
+find_node_byref(_, []) -> [];
+find_node_byref(Ref, [H|T]) -> 
+	E1 = find_node_byref(Ref, H),
 	if 
 		is_tuple(E1) ->
 			E1; % нашли, дальше не интересно
 		true ->
-			find_el_byref(Ref, T)
+			find_node_byref(Ref, T)
 	end. % walk list if it is not empty
 
 % HTML tag remover: rm_el(Key, HtmlNode) 
@@ -193,7 +196,7 @@ clean_html_tree(Tree) -> % prepDocument in readability.js
 
 
 get_title(Tree) ->
-	{_, _, TitleStr} = find_el(<<"title">>, Tree),
+	{_, _, TitleStr} = find_node(<<"title">>, Tree),
 	TitleStr.
 
 % Returns html-page
@@ -219,7 +222,7 @@ simplify_page(Url) ->
 	try mochiweb_html:parse(Body) of % не сработает если в файле нет ни одного тэга html
 		TreeOrig -> 
 			TitleStr = get_title(TreeOrig),
-			{_, _, TreeBody} = find_el(<<"body">>, TreeOrig), 
+			{_, _, TreeBody} = find_node(<<"body">>, TreeOrig), 
 			ScoredTree = score_tree(
 				addref_el(
 					% превращаем относительные url в абсолютные
@@ -229,7 +232,7 @@ simplify_page(Url) ->
 				)
 			),
 			OptimumRef = get_max_score_ref(ScoredTree),
-			ContentBody = rmref_el(find_el(OptimumRef, ScoredTree)),
+			ContentBody = rmref_el(find_node(OptimumRef, ScoredTree)),
 			TreeOut = {
 				<<"html">>, [], [
 					{
@@ -291,7 +294,7 @@ score_by_class_or_id(Node) ->
 score_one_p(PNode, TreeFull) ->
 	CommaScore = count_commas(PNode),
 	ParentRef = get_parent_ref(PNode),
-	Parent = find_el(ParentRef, TreeFull),
+	Parent = find_node(ParentRef, TreeFull),
 	% TODO: что если нет Parent'a?
 	CurParentScore = get_score(Parent),
 	if 
@@ -303,7 +306,7 @@ score_one_p(PNode, TreeFull) ->
 	modify_score(ParentRef, TreeFull, ParentScoreDiff + CommaScore + 1). % +1 за сам <p>
 
 score_tree(Tree) ->
-	PList = find_elems(<<"p">>, Tree),
+	PList = find_all_nodes(<<"p">>, Tree),
 	lists:foldl(fun score_one_p/2, Tree, PList).
 
 
