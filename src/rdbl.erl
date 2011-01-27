@@ -1,14 +1,17 @@
+%%
+%% Erlang readability library inspired by readability.js
+%%
 %% @author Ivan Koshkin <ivan@koshkin.me>
-%% @copyright 2011
-
+%% @copyright 2011 by Ivan Koshkin
+%%
 -module(rdbl).
 -author('ivan@koshkin.me').
 
--export([simplify_url/1, simplify_url/2, simplify_file/2, simplify_page/1, simplify_page/2]).
+-export([simplify_url/1, simplify_url/2, simplify_file/2, simplify_page/1]).
 
 -ifdef(DEBUG).
 -export([find_node/2, find_all_nodes/2, remove_node/2, replace_node/3, replace_node/4]).
--export([fetch_page/1]).
+-export([fetch_page/1, simplify_page/2]).
 -export([brbr_to_p/1, count_commas/1, clean_html_tree/1]).
 -export([init_scores/1, clean_scores/1, modify_score/3, get_score/1, get_ref/1, get_parent_ref/1]).
 -export([full_url/2, url_context/1]).
