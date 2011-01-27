@@ -13,9 +13,9 @@ make
 Examples
 --------
 
-rdbl:simplify_url("http://www.somesite.at/internet") -> simplified page text as string()
+rdbl:simplify_url("http://www.somesite.at/internet/") -> simplified page text as string()
 
-rdbl:simplify_url("http://www.somesite.at/internet", "out.html") -> ok
+rdbl:simplify_url("http://www.somesite.at/internet/", "out.html") -> ok
 
 rdbl:simplify_file("input.html", "out.html") -> ok
 

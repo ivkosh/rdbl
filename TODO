@@ -5,6 +5,7 @@
 - optimize remove_node([Keys]) - remove all keys from list in one walk of html tree
 - rewrite fetch_page/1 - do inets:start() and ssl:start() only if not started, cache fetched pages in ets by url
 - add support of documents with frames - find max <frame> in frameset and use it as document
+- fetch_url should check if url is correct (has prefix http:// https:// etc)
 
 - mochiweb_html:parse threats &nbsp; incorrectly - it is converted to unicode symbol russian V in cp1251
 
