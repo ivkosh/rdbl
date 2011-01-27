@@ -1,4 +1,5 @@
 -module(t).
+-author('ivan@koshkin.me').
 
 -export([go/0, go/1, go/2, go1/2, go_repl/3, goyaws/1]).
 -export([find_el/2, find_elems/2, rm_el/2, repl_el/3, repl_el/4, rm_brbr/1, count_commas/1]).
@@ -184,6 +185,8 @@ rmref_el([H|T]) -> [rmref_el(H) | rmref_el(T)]. % processing list recursively
 
 %build_htmltree(HtmlPage) ->
 
+% TODO: сохранять charset из <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+% и/или из httpc:request
 clean_html_tree(Tree) -> % prepDocument in readability.js
 	% TODO: add: find max <frame> in frameset and use it as document
 	rm_brbr( % заменяем <br><br> на <p>
@@ -200,6 +203,7 @@ get_title(Tree) ->
 % Returns html-page
 fetch_page(Url) ->
 	inets:start(), % TODO: handle errors & not start if already started
+	ssl:start(),
 	% TODO: cache page - save to ets by url
 	case httpc:request(Url) of 
 		{ok, {_, _, Body}} ->
@@ -222,12 +226,14 @@ simplify_page(Url) ->
 			{_, _, TreeBody} = find_el(<<"body">>, TreeOrig), 
 			ScoredTree = score_tree(
 				addref_el(
+					% превращаем относительные url в абсолютные
 					repl_el_attr_f(<<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
 					repl_el_attr_f(<<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
 					clean_html_tree(TreeBody)))
 				)
 			),
 			OptimumRef = get_max_score_ref(ScoredTree),
+			ContentBody = rmref_el(find_el(OptimumRef, ScoredTree)),
 			TreeOut = {
 				<<"html">>, [], [
 					{
@@ -235,9 +241,8 @@ simplify_page(Url) ->
 					},
 					{
 						<<"body">>, [], 
-						%	[ {<<"h1">>, [], TitleStr} ] ++ % можно и убрать
-						% превращаем относительные url в абсолютные
-						rmref_el(find_el(OptimumRef, ScoredTree))
+							[ {<<"h1">>, [], TitleStr} ] ++ % можно и убрать
+						[ContentBody]
 					}
 				]
 			},
