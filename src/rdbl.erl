@@ -35,47 +35,46 @@ count_commas(Leaf) when is_binary(Leaf) -> lists:foldl(fun(E, S) -> if E == $, -
 %% @spec find_node(reference() | binary(), html_node()) -> html_node()
 %% @doc returns first node from HTML tree with specific HTML tag. If tree is scored, search can be done by node reference
 find_node(Ref, HtmlNode) when is_reference(Ref) -> find_node_byref(Ref, HtmlNode);
-find_node(Key, HtmlNode) when is_binary(Key)    -> find_node_bykey(Key, HtmlNode, [], first).
+find_node(Key, HtmlNode) when is_binary(Key)    -> find_node_bykey(Key, HtmlNode, first).
 
 %% @spec find_all_nodes(binary(), html_node()) -> [html_node()]
 %% @doc the same as find_node(), but returns all nodes with specific tag as a list 
-find_all_nodes(Key, HtmlNode) when is_binary(Key) -> find_node_bykey(Key, HtmlNode, [], multi).
+find_all_nodes(Key, HtmlNode) when is_binary(Key) -> find_node_bykey(Key, HtmlNode, multi).
 
-%% @spec find_node_by_key(binary(), html_node(), [html_node()], first | multi)
+%% @spec find_node_by_key(binary(), html_node(), first | multi)
 %% @doc helper function for find_node() and find_all_nodes()
 %% @doc returns: 
 %% @doc - first element found as html_node() if SearchType != multi 
 %% @doc - list of all found elements as [html_node()] if SearchType == multi
-find_node_bykey(_, HtmlNode, Out, multi) when is_binary(HtmlNode) -> Out; % leaf
-find_node_bykey(_, HtmlNode, _, _)       when is_binary(HtmlNode) -> [];  % if first element search leaf is not an option
-find_node_bykey(_, {comment, _}, _, _) -> [];                             % comments in mochiweb_html:parse are 2-element tuples, dropping them
-find_node_bykey(Key, Elem, Out, SearchType) when is_tuple(Elem) ->        % Element found
+find_node_bykey(_, HtmlNode, _)       when is_binary(HtmlNode) -> [];  % don't searching for leafs
+find_node_bykey(_, {comment, _}, _) -> [];                             % comments in mochiweb_html:parse are 2-element tuples, dropping them
+find_node_bykey(Key, Elem, SearchType) when is_tuple(Elem) ->        % Element found
 	case Elem of
 		% element found (key in current Elem equals to Key)
-		{Key, _, R} when SearchType == multi    -> [Elem | find_node_bykey(Key, R, Out, SearchType)]; % adding to Out
+		{Key, _, R} when SearchType == multi    -> [Elem | find_node_bykey(Key, R, SearchType)]; % adding to Out
 		{Key, _, _}                             ->  Elem; % return first element and stop processing	
 		% if HtmlTree was modified with score tuple contains 4 elements
 		{Key, _S, _, R} ->
 			if 
-				SearchType == multi -> [Elem | find_node_bykey(Key, R, Out, SearchType)];	
+				SearchType == multi -> [Elem | find_node_bykey(Key, R, SearchType)];	
 				true                ->  Elem
 			end;
 		% key in current Elem not equalt to Key, e.g. still not found, continue search in the rest part of tree
-		{_, _, R}    -> find_node_bykey(Key, R, Out, SearchType); 
-		{_, _, _, R} -> find_node_bykey(Key, R, Out, SearchType);
+		{_, _, R}    -> find_node_bykey(Key, R, SearchType); 
+		{_, _, _, R} -> find_node_bykey(Key, R, SearchType);
 		_            -> [] % unsupported case
 	end;
 % Lists of html_node()
-find_node_bykey(_, [], Out, _) -> Out;
-find_node_bykey(Key, [H|T], Out, SearchType) -> 
-	E1 = find_node_bykey(Key, H, Out, SearchType),
+find_node_bykey(_, [], _) -> [];
+find_node_bykey(Key, [H|T], SearchType) -> 
+	E1 = find_node_bykey(Key, H, SearchType),
 	if 
 		SearchType == multi ->
-			E1 ++ find_node_bykey(Key, T, Out, SearchType); % walk rest part of listlist if it is not empty
+			E1 ++ find_node_bykey(Key, T, SearchType); % walk rest part of listlist if it is not empty
 		is_tuple(E1) -> % SearchType is not multi (e.g. first) AND E1 is tuple - we found it!
 			E1;
 		true -> % otherwise continue search
-			find_node_bykey(Key, T, Out, SearchType)
+			find_node_bykey(Key, T, SearchType)
 	end.
 			
 
