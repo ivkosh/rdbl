@@ -1,5 +1,6 @@
+TODO:
+-----
 - fix bug with habrahabr.ru parsing (sometimes comment is selected instead of article body).
-- add charset support - save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request
 
 - do fetch_page in separate process
 - optimize remove_node([Keys]) - remove all keys from list in one walk of html tree
@@ -9,5 +10,12 @@
 
 - mochiweb_html:parse threats &nbsp; incorrectly - it is converted to unicode symbol russian V in cp1251
 
+- add support for redirected urls (fetch redirected page). Or this is aready working?
+
 - improve readability score algorithm
 - improve pre-score clean-up
+
+DONE:
+-----
++ add charset support - save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request
+
