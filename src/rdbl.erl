@@ -9,6 +9,8 @@
 
 -export([simplify_url/1, simplify_url/2, simplify_file/2, simplify_page/1]).
 
+-define(DEBUG, 1).
+
 -ifdef(DEBUG).
 -export([find_node/2, find_all_nodes/2, remove_node/2, replace_node/3, replace_node/4]).
 -export([fetch_page/1, simplify_page/2]).
@@ -90,20 +92,26 @@ simplify_page(Body, Ctx) ->
 					% converting urls in <a> and <img> to absolute urls
 					replace_node(<<"a">>,   <<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
 					replace_node(<<"img">>, <<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
-					clean_html_tree(TreeBody)))
+						clean_html_tree({<<"div">>, [], TreeBody}))) % converting body to div
 				)
 			),
 			OptimumRef = get_max_score_ref(ScoredTree),
 			ContentBody = clean_scores(find_node(OptimumRef, ScoredTree)),
+			% do something if Content body is started with <td> or <tr>
+			case ContentBody of
+				{<<"td">>, _, CellContent} -> Out = CellContent;
+				{<<"tr">>, _, _}           -> Out = {<<"table">>, [], ContentBody};
+				% ? what if it is a list of <td> or <tr>? FIXME
+				_ -> Out = [ContentBody]
+			end,
 			TreeOut = {
 				<<"html">>, [], [
 					{
 						<<"head">>, [], [{<<"title">>, [], TitleStr}]
 					},
 					{
-						<<"body">>, [], 
-						%[ {<<"h1">>, [], TitleStr} ] ++ 
-						[ContentBody]
+						<<"body">>, [],
+						Out
 					}
 				]
 			},
