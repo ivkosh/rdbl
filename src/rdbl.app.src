@@ -1,0 +1,12 @@
+{application, rdbl,
+ [
+  {description, ""},
+  {vsn, "0.2"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { rdbl_app, []}},
+  {env, []}
+ ]}.
