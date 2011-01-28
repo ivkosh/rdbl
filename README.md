@@ -1,14 +1,13 @@
 rdbl.erl - Erlang readability library 
 -------------------------------------
-[Inspired by readability.js by arc90]
+[Inspired by readability.js of arc90]
 
 This is Erlang version of readability.js with my modifications.
 Library uses mochiweb_html to parse HTML-content.
 
 Installation
 ------------
-cd src/
-make
+cd src/ && make
 
 Examples
 --------
