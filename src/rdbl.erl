@@ -379,7 +379,7 @@ get_max_score_ref(Tree) ->
 	{Ref, _MaxScore} = lists:foldl(
 		fun({Ref, Score}, {Ref0, Score0}) -> 
 				if 
-					is_reference(Ref) -> 
+					is_reference(Ref0) -> % e.g. not first pass
 						if 
 							Score0<Score -> {Ref, Score}; 
 							true->{Ref0, Score0} 
