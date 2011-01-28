@@ -1,8 +1,8 @@
 rdbl.erl - Erlang readability library 
 -------------------------------------
-[Inspired by readability.js of arc90]
 
-This is Erlang version of readability.js with my modifications.
+This is Erlang library to extract reasonable content and remove junk from html pages. 
+Based on ideas from readability.js by arc90.
 Library uses mochiweb_html to parse HTML-content.
 
 Installation
@@ -12,12 +12,12 @@ cd src/ && make
 Examples
 --------
 
-rdbl:simplify_url("http://www.somesite.at/internet/") -> simplified page text as string()
+1> rdbl:simplify_url("http://www.somesite.at/internet/") -> simplified page text as string()
 
-rdbl:simplify_url("http://www.somesite.at/internet/", "out.html") -> ok
+2> rdbl:simplify_url("http://www.somesite.at/internet/", "out.html") -> ok
 
-rdbl:simplify_file("input.html", "out.html") -> ok
+3> rdbl:simplify_file("input.html", "out.html") -> ok
 
-rdbl:simplify_page(HtmlPageText) -> PageTextSimplified
+4> rdbl:simplify_page(HtmlPageText) -> PageTextSimplified
 
 See other examples in rdbl.erl.
