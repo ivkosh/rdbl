@@ -1,10 +1,9 @@
 TODO:
 -----
-- fix bug with habrahabr.ru parsing (sometimes comment is selected instead of article body).
-
 - do fetch_page in separate process
 - optimize remove_node([Keys]) - remove all keys from list in one walk of html tree
 - rewrite fetch_page/1 - do inets:start() and ssl:start() only if not started, cache fetched pages in ets by url
+- write otp app for page fetching, caching, etc.
 - add support of documents with frames - find max <frame> in frameset and use it as document
 - fetch_url should check if url is correct (has prefix http:// https:// etc)
 
@@ -18,4 +17,5 @@ TODO:
 DONE:
 -----
 + add charset support - save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request
++ fix bug with habrahabr.ru parsing (sometimes comment is selected instead of article body).
 
