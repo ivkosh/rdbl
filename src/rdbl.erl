@@ -134,12 +134,13 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 						<<"head">>, [], 
 							[
 								{<<"title">>, [], TitleStr}, 
-								{<<"meta">>, [{<<"http-equiv">>, <<"content-type">>}, {<<"content">>, ContentType}], []}
+								{<<"meta">>, [{<<"http-equiv">>, <<"content-type">>}, {<<"content">>, ContentType}], []},
+								{<<"style">>, [{<<"type">>, <<"text/css">>}], [<<"h1 { display: block; width: 100%; border-bottom: 1px solid #333; font-size: 1.2em; }">>]}
 							]
 					},
 					{
 						<<"body">>, [],
-						Out
+						[{<<"h1">>, [], TitleStr} | Out]
 					}
 				]
 			},

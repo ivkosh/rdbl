@@ -14,6 +14,8 @@ TODO:
 - improve readability score algorithm
 - improve pre-score clean-up
 
+- move page styles to external css; mark article body by <div>'s
+
 DONE:
 -----
 + add charset support - save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request
