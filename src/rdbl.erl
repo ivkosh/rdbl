@@ -62,9 +62,7 @@ simplify_url(Url, FileName) ->
 %% @doc reads file from disk, simplifies its content and saves to file
 %% @doc example: simplify_url("index.html", "out.html")
 simplify_file(FileNameIn, FileNameOut) ->
-	{ok, Fin}  = file:open(FileNameIn, [binary, read]), % TODO: check if file open
-	{ok, Html} = file:read_file(Fin),
-	file:close(Fin),
+	{ok, Html} = file:read_file(FileNameIn),% TODO: check errors
 	Page = simplify_page(Html),
 	{ok, Fout} = file:open(FileNameOut, [binary, write]),
 	file:write(Fout, Page),
