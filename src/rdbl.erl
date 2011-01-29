@@ -14,7 +14,7 @@
 -export([find_node/2, find_all_nodes/2, remove_node/2, replace_node/3, replace_node/4]).
 -export([fetch_page/1, simplify_page/3]).
 -export([brbr_to_p/1, count_commas/1, clean_html_tree/1]).
--export([init_scores/1, clean_scores/1, modify_score/3, get_score/1, get_ref/1, get_parent_ref/1]).
+-export([init_scores/1, clean_scores/1, modify_score/3, get_score/1, get_ref/1, get_parent_ref/1, score_tree/1, score_list/1]).
 -export([full_url/2, url_context/1]).
 -endif.
 
@@ -28,6 +28,10 @@
 
 -define(RE_NEGATIVE, "\\b(comment|meta|footer|footnote)\\b").
 -define(RE_POSITIVE, "\\b(post|hentry|entry[-]?(content|text|body)?|article[-]?(content|text|body)?)\\b").
+
+% TODO: habrahabr.ru comments are entry-content-only and entry-content, fix this
+% maybe add dependency score algorithm from page url?
+% or maybe commas are not counted???
 
 %%
 %% @type scored_html_node() = {string(), score(), [html_attr()], [html_node() | string()]}
@@ -286,7 +290,7 @@ init_scores(Tree) -> init_scores(Tree, make_ref()). % adding reference for topmo
 %
 init_scores(R, _) when is_binary(R) -> R;
 init_scores({comment, _}, _) -> []; % dropping comments
-init_scores({E, A, Rest}, Parent) -> Ref=make_ref(), {E, #score{ref=Ref, parent=Parent, readability=score_by_class_or_id(A)}, A, init_scores(Rest, Ref)}; % setting current parent and giving my ref to child as parent
+init_scores({E, A, Rest}, Parent) -> Ref=make_ref(), {E, #score{ref=Ref, parent=Parent}, A, init_scores(Rest, Ref)}; % setting current parent and giving my ref to child as parent
 init_scores([], _) -> [];
 init_scores([H|T], Parent) -> [init_scores(H, Parent) | init_scores(T, Parent)]. % processing list recursively
 
@@ -294,8 +298,8 @@ init_scores([H|T], Parent) -> [init_scores(H, Parent) | init_scores(T, Parent)].
 %% @doc transforms scored tree to normal tree which can be processed by mochiweb_html functions
 clean_scores(NodeIn) when is_binary(NodeIn) -> NodeIn;
 clean_scores({comment, _}) -> []; 
-%clean_scores({E, _Score, A, Rest}) -> {E, A, clean_scores(Rest)};
-clean_scores({E, Score, A, Rest}) -> {E, [{<<"readability">>, Score#score.readability}|A], clean_scores(Rest)}; %DEBUG!
+clean_scores({E, _Score, A, Rest}) -> {E, A, clean_scores(Rest)};
+%clean_scores({E, Score, A, Rest}) -> {E, [{<<"readability">>, Score#score.readability}|A], clean_scores(Rest)}; %DEBUG - save score to attrs
 clean_scores({E, A, Rest}) -> {E, A, clean_scores(Rest)};
 clean_scores([]) -> [];
 clean_scores([H|T]) -> [clean_scores(H) | clean_scores(T)]. 
