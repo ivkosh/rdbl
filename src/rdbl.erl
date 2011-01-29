@@ -8,14 +8,13 @@
 -author('ivan@koshkin.me').
 
 -export([simplify_url/1, simplify_url/2, simplify_file/2, simplify_page/1]).
-
 -define(DEBUG, 1).
 
 -ifdef(DEBUG).
 -export([find_node/2, find_all_nodes/2, remove_node/2, replace_node/3, replace_node/4]).
--export([fetch_page/1, simplify_page/2]).
+-export([fetch_page/1, simplify_page/3]).
 -export([brbr_to_p/1, count_commas/1, clean_html_tree/1]).
--export([init_scores/1, clean_scores/1, modify_score/3, get_score/1, get_ref/1, get_parent_ref/1]).
+-export([init_scores/1, clean_scores/1, modify_score/3, get_score/1, get_ref/1, get_parent_ref/1, score_tree/1, score_list/1]).
 -export([full_url/2, url_context/1]).
 -endif.
 
@@ -29,6 +28,10 @@
 
 -define(RE_NEGATIVE, "\\b(comment|meta|footer|footnote)\\b").
 -define(RE_POSITIVE, "\\b(post|hentry|entry[-]?(content|text|body)?|article[-]?(content|text|body)?)\\b").
+
+% TODO: habrahabr.ru comments are entry-content-only and entry-content, fix this
+% maybe add dependency score algorithm from page url?
+% or maybe commas are not counted???
 
 %%
 %% @type scored_html_node() = {string(), score(), [html_attr()], [html_node() | string()]}
@@ -45,9 +48,9 @@
 %% @doc fetches url, simplifies its content and returns simplified page as a string()
 %% @doc example: simplify_url("http://news.yandex.ru/") -> SimplifiedPageText
 simplify_url(Url) ->
-	Body = fetch_page(Url), % TODO: делать в отдельном процессе и слать сообщение по завершению
+	{ContentType, Body} = fetch_page(Url), % TODO: делать в отдельном процессе и слать сообщение по завершению
 	Ctx = url_context(Url),
-	simplify_page(Body, Ctx).
+	simplify_page(Body, Ctx, ContentType).
 
 %% @spec simplify_url(string(), string()) -> ok
 %% @doc fetches url, simplifies its content and saves to file
@@ -63,9 +66,7 @@ simplify_url(Url, FileName) ->
 %% @doc reads file from disk, simplifies its content and saves to file
 %% @doc example: simplify_url("index.html", "out.html")
 simplify_file(FileNameIn, FileNameOut) ->
-	{ok, Fin}  = file:open(FileNameIn, [binary, read]), % TODO: check if file open
-	{ok, Html} = file:read_file(Fin),
-	file:close(Fin),
+	{ok, Html} = file:read_file(FileNameIn),% TODO: check errors
 	Page = simplify_page(Html),
 	{ok, Fout} = file:open(FileNameOut, [binary, write]),
 	file:write(Fout, Page),
@@ -75,17 +76,40 @@ simplify_file(FileNameIn, FileNameOut) ->
 %% @spec simplify_page(string()) -> string()
 %% @doc wrapper for simplify_page/2 (starts with empty url context)
 simplify_page(Body) ->
-	simplify_page(Body, {"", ""}). % empty context
+	simplify_page(Body, {"", ""}, "text/html"). % empty context
 
-%% @spec simplify_page(string(), {string(), string}) -> string()
+
+%% @spec extract_content_type(html_node(), binary()) -> binary()
+extract_content_type(Tree, DefaultContentType) ->
+		L = lists:foldl( % find list of attrs with http-equiv=content-type (case sensitive)
+			fun(El, Acc) -> 
+				{_, Attrs, _} = El,
+				case [ {A, V} || {A, V} <- Attrs, A == <<"http-equiv">>, string:to_lower(binary_to_list(V)) == "content-type" ] of
+					[] -> 
+						Acc;
+					_ ->
+						Attrs
+				end
+		end, [], find_all_nodes(<<"meta">>, Tree)),
+		case L of
+			[] -> % not found - return default content type (from httpc:request)
+				C = DefaultContentType;
+			_ -> % found
+				{_, C} = lists:keyfind(<<"content">>, 1, L)
+		end,
+		C.
+
+%% @spec simplify_page(string(), {string(), string()}, string()) -> string()
 %% @doc main function
 %% @doc takes document contens (Body) and document context (Ctx, see url_context/1)
 %% @doc returns simplified page as a string()
-simplify_page(Body, Ctx) ->
+simplify_page(Body, Ctx, DefaultContentType) ->
 	try mochiweb_html:parse(Body) of % parse() will not work if Body contains no html tags
 		TreeOrig -> 
 			TitleStr = get_title(TreeOrig),
-			% TODO: save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request
+			% save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request
+			ContentType = extract_content_type(TreeOrig, list_to_binary(DefaultContentType)),
+			% TODO: what if content type from meta or request was not text/html? support this
 			{_, _, TreeBody} = find_node(<<"body">>, TreeOrig), 
 			ScoredTree = score_tree(
 				init_scores(
@@ -107,7 +131,11 @@ simplify_page(Body, Ctx) ->
 			TreeOut = {
 				<<"html">>, [], [
 					{
-						<<"head">>, [], [{<<"title">>, [], TitleStr}]
+						<<"head">>, [], 
+							[
+								{<<"title">>, [], TitleStr}, 
+								{<<"meta">>, [{<<"http-equiv">>, <<"content-type">>}, {<<"content">>, ContentType}], []}
+							]
 					},
 					{
 						<<"body">>, [],
@@ -271,6 +299,7 @@ init_scores([H|T], Parent) -> [init_scores(H, Parent) | init_scores(T, Parent)].
 clean_scores(NodeIn) when is_binary(NodeIn) -> NodeIn;
 clean_scores({comment, _}) -> []; 
 clean_scores({E, _Score, A, Rest}) -> {E, A, clean_scores(Rest)};
+%clean_scores({E, Score, A, Rest}) -> {E, [{<<"readability">>, Score#score.readability}|A], clean_scores(Rest)}; %DEBUG - save score to attrs
 clean_scores({E, A, Rest}) -> {E, A, clean_scores(Rest)};
 clean_scores([]) -> [];
 clean_scores([H|T]) -> [clean_scores(H) | clean_scores(T)]. 
@@ -299,10 +328,19 @@ fetch_page(Url) ->
 	ssl:start(),
 	% TODO: cache page - save to ets by url
 	case httpc:request(Url) of 
-		{ok, {_, _, Body}} ->
-			Body;
+		{ok, {_, Hdrs, Body}} ->
+			case lists:keyfind("content-type", 1, Hdrs) of
+				{_, ContentType} ->
+					ContentType;
+				_ ->
+					ContentType = "text/html"
+			end,
+			{ContentType, Body};
 		{error, ErrVal} ->
-			io_lib:format(<<"<html><head><title>Error</title></head><body>Cannot fetch ~s - ~p</body></html>">>, [Url, ErrVal])
+			{
+				"text/html",
+				io_lib:format(<<"<html><head><title>Error</title></head><body>Cannot fetch ~s - ~p</body></html>">>, [Url, ErrVal])
+			}
 	end.
 
 %% @spec clean_html_tree(html_node() | scored_html_node()) -> html_node() | scored_html_node()
@@ -340,10 +378,12 @@ get_score(Node) ->
 	Score.
 
 %% @spec score_by_class_or_id(scored_html_node()) -> int()
+%% @spec score_by_class_or_id([html_attr()]) -> int()
 %% @doc calculates score for node element by its id or class name
-score_by_class_or_id(Node) ->
-	{_, _, Attrs, _} = Node,
-	AttrVals = [ V || {K, V} <- Attrs, (K == <<"id">>) or (K == <<"class">>) ],
+score_by_class_or_id({_, _, Attrs, _})-> score_by_class_or_id(Attrs);
+score_by_class_or_id([]) -> 0;
+score_by_class_or_id(Attrs=[_|_]) ->
+	AttrVals = [ V || {K, V} <- [Attrs], (K == <<"id">>) or (K == <<"class">>) ],
 	if 
 		AttrVals == [] -> 0; % no id or class (list is empty)
 		true -> % e.g. we have id or class or both
@@ -360,26 +400,26 @@ score_by_class_or_id(Node) ->
 %% @spec score_tree(scored_html_node()) -> scored_html_node()
 %% @doc score whole html tree depending on its contents
 score_tree(Tree) ->
-	PList = find_all_nodes(<<"p">>, Tree),
-	lists:foldl(fun score_one_p/2, Tree, PList).
-
-%% @spec score_one_p(scored_html_node(), scored_html_node()) -> scored_html_node()
-%% @doc scores parent of current <p> depending on paragraph content and parent class or id
-%% @doc returns modified tree where parent was rescored
-score_one_p(PNode, TreeFull) ->
-	CommaScore = count_commas(PNode),
-	ParentRef = get_parent_ref(PNode),
-	Parent = find_node(ParentRef, TreeFull),
-	% FIXME: что если нет Parent'a?
-	CurParentScore = get_score(Parent),
-	if 
-		CurParentScore == 0 -> % e.g. parent was not scored yet
-			ParentScoreDiff = score_by_class_or_id(Parent);
-		true -> % if parent was already scored, no need to additionaly rescore it
-			ParentScoreDiff = 0
-	end,
-	modify_score(ParentRef, TreeFull, ParentScoreDiff + CommaScore + 1). % +1 for current <p> itself
-
+	Paragraphs = find_all_nodes(<<"p">>, Tree),
+	Tree1 = lists:foldl(
+		fun(P, TreeAcc) ->
+			modify_score(get_parent_ref(P), TreeAcc, 1) % +1 to parent for each inner <p> 
+		end, Tree, Paragraphs),
+	UniqParents = lists:foldl( % building list of unique parent refs for all <p>'s
+		fun(P, ParentRefList) -> 
+			ParentRef = get_parent_ref(P),
+			case lists:member(ParentRef, ParentRefList) of
+				true  -> ParentRefList;
+				false -> [ParentRef | ParentRefList]
+			end
+		end, [], Paragraphs),
+	lists:foldl(
+		fun(ParentRef, TreeAcc) ->
+			Parent = find_node(ParentRef, TreeAcc),
+			Score1 = score_by_class_or_id(Parent),
+			Commas = count_commas(Parent),
+			modify_score(ParentRef, TreeAcc, Commas+Score1)
+		end, Tree1, UniqParents).
 
 %% @spec get_max_score_ref(scored_html_node()) -> reference()
 %% @doc finds ref to node with maximum readability score
