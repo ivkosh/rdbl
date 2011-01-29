@@ -376,9 +376,10 @@ get_score(Node) ->
 %% @spec score_by_class_or_id(scored_html_node()) -> int()
 %% @spec score_by_class_or_id([html_attr()]) -> int()
 %% @doc calculates score for node element by its id or class name
-score_by_class_or_id({_, _, Attrs, _})-> score_by_class_or_id(Attrs).
-score_by_class_or_id(Attrs) when is list Attrs ->
-	AttrVals = [ V || {K, V} <- Attrs, (K == <<"id">>) or (K == <<"class">>) ],
+score_by_class_or_id({_, _, Attrs, _})-> score_by_class_or_id(Attrs);
+score_by_class_or_id([]) -> 0;
+score_by_class_or_id(Attrs=[_|_]) ->
+	AttrVals = [ V || {K, V} <- [Attrs], (K == <<"id">>) or (K == <<"class">>) ],
 	if 
 		AttrVals == [] -> 0; % no id or class (list is empty)
 		true -> % e.g. we have id or class or both
@@ -395,26 +396,26 @@ score_by_class_or_id(Attrs) when is list Attrs ->
 %% @spec score_tree(scored_html_node()) -> scored_html_node()
 %% @doc score whole html tree depending on its contents
 score_tree(Tree) ->
-	PList = find_all_nodes(<<"p">>, Tree),
-	lists:foldl(fun score_one_p/2, Tree, PList).
-
-%% @spec score_one_p(scored_html_node(), scored_html_node()) -> scored_html_node()
-%% @doc scores parent of current <p> depending on paragraph content and parent class or id
-%% @doc returns modified tree where parent was rescored
-score_one_p(PNode, TreeFull) ->
-	CommaScore = count_commas(PNode),
-	ParentRef = get_parent_ref(PNode),
-	Parent = find_node(ParentRef, TreeFull),
-	% FIXME: что если нет Parent'a?
-	CurParentScore = get_score(Parent),
-	if 
-		CurParentScore == 0 -> % e.g. parent was not scored yet
-			ParentScoreDiff = score_by_class_or_id(Parent);
-		true -> % if parent was already scored, no need to additionaly rescore it
-			ParentScoreDiff = 0
-	end,
-	modify_score(ParentRef, TreeFull, ParentScoreDiff + CommaScore + 1). % +1 for current <p> itself
-
+	Paragraphs = find_all_nodes(<<"p">>, Tree),
+	Tree1 = lists:foldl(
+		fun(P, TreeAcc) ->
+			modify_score(get_parent_ref(P), TreeAcc, 1) % +1 to parent for each inner <p> 
+		end, Tree, Paragraphs),
+	UniqParents = lists:foldl( % building list of unique parent refs for all <p>'s
+		fun(P, ParentRefList) -> 
+			ParentRef = get_parent_ref(P),
+			case lists:member(ParentRef, ParentRefList) of
+				true  -> ParentRefList;
+				false -> [ParentRef | ParentRefList]
+			end
+		end, [], Paragraphs),
+	lists:foldl(
+		fun(ParentRef, TreeAcc) ->
+			Parent = find_node(ParentRef, TreeAcc),
+			Score1 = score_by_class_or_id(Parent),
+			Commas = count_commas(Parent),
+			modify_score(ParentRef, TreeAcc, Commas+Score1)
+		end, Tree1, UniqParents).
 
 %% @spec get_max_score_ref(scored_html_node()) -> reference()
 %% @doc finds ref to node with maximum readability score
