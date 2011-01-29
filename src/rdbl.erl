@@ -286,7 +286,7 @@ init_scores(Tree) -> init_scores(Tree, make_ref()). % adding reference for topmo
 %
 init_scores(R, _) when is_binary(R) -> R;
 init_scores({comment, _}, _) -> []; % dropping comments
-init_scores({E, A, Rest}, Parent) -> Ref=make_ref(), {E, #score{ref=Ref, parent=Parent}, A, init_scores(Rest, Ref)}; % setting current parent and giving my ref to child as parent
+init_scores({E, A, Rest}, Parent) -> Ref=make_ref(), {E, #score{ref=Ref, parent=Parent, readability=score_by_class_or_id(A)}, A, init_scores(Rest, Ref)}; % setting current parent and giving my ref to child as parent
 init_scores([], _) -> [];
 init_scores([H|T], Parent) -> [init_scores(H, Parent) | init_scores(T, Parent)]. % processing list recursively
 
@@ -374,9 +374,10 @@ get_score(Node) ->
 	Score.
 
 %% @spec score_by_class_or_id(scored_html_node()) -> int()
+%% @spec score_by_class_or_id([html_attr()]) -> int()
 %% @doc calculates score for node element by its id or class name
-score_by_class_or_id(Node) ->
-	{_, _, Attrs, _} = Node,
+score_by_class_or_id({_, _, Attrs, _})-> score_by_class_or_id(Attrs).
+score_by_class_or_id(Attrs) when is list Attrs ->
 	AttrVals = [ V || {K, V} <- Attrs, (K == <<"id">>) or (K == <<"class">>) ],
 	if 
 		AttrVals == [] -> 0; % no id or class (list is empty)
