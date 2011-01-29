@@ -5,9 +5,11 @@
 %% @copyright 2011 by Ivan Koshkin
 %%
 -module(rdbl).
--author('ivan@koshkin.me').
+-author('Ivan Koshkin <ivan@koshkin.me>').
+-vsn('0.3').
 
 -export([simplify_url/1, simplify_url/2, simplify_file/2, simplify_page/1]).
+
 -define(DEBUG, 1).
 
 -ifdef(DEBUG).
@@ -128,6 +130,10 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 				% ? what if it is a list of <td> or <tr>? FIXME
 				_ -> Out = [ContentBody]
 			end,
+			case Out of % if content body starts from <h1> we assume page has its own title in body, keeping it
+				[{<<"h1">>, _, _}|_] -> Out2 = Out;
+				_                    -> Out2 = [{<<"h1">>, [], TitleStr} | Out] % adding page <title> in any other case as <h1>
+			end,
 			TreeOut = {
 				<<"html">>, [], [
 					{
@@ -140,7 +146,7 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 					},
 					{
 						<<"body">>, [],
-						[{<<"h1">>, [], TitleStr} | Out]
+						Out2
 					}
 				]
 			},
