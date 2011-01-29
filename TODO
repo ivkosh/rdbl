@@ -18,6 +18,11 @@ TODO:
 
 - write some tests and automate debug steps - fetch, view tree, view simplified & scored tree, etc.
 
+- don't simplify simplified: check if url is from my service (e.g. already simplified) - don't make recursive fetch
+- why recursive simplification does not working? async?
+
+- create bookmarklet (does it require escape(location.href)?)
+
 DONE:
 -----
 + add charset support - save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request
