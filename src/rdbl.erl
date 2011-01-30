@@ -116,6 +116,7 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 			ScoredTree = score_tree(
 				init_scores(
 					% converting urls in <a> and <img> to absolute urls
+					% TODO: ! rewrite replace node to work with list of tags (to pass once on tree)
 					replace_node(<<"a">>,   <<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
 					replace_node(<<"img">>, <<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
 						clean_html_tree({<<"div">>, [], TreeBody}))) % converting body to div
@@ -131,8 +132,12 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 				_ -> Out = [ContentBody]
 			end,
 			case Out of % if content body starts from <h1> we assume page has its own title in body, keeping it
-				[{<<"h1">>, _, _}|_] -> Out2 = Out;
-				_                    -> Out2 = [{<<"h1">>, [], TitleStr} | Out] % adding page <title> in any other case as <h1>
+				[{<<"h1">>, _, _}|_] -> 
+					Out2 = Out;
+				[{<<"div">>, _, {<<"h1">>, _, _}}|_] -> 
+					Out2 = Out;
+				_ -> 
+					Out2 = [{<<"h1">>, [], TitleStr} | Out] % adding page <title> in any other case as <h1>
 			end,
 			TreeOut = {
 				<<"html">>, [], [
@@ -406,11 +411,12 @@ score_by_class_or_id(Attrs=[_|_]) ->
 
 %% @spec score_tree(scored_html_node()) -> scored_html_node()
 %% @doc score whole html tree depending on its contents
-score_tree(Tree) ->
+score_tree(Tree) -> % TODO: do score_tree in parallel (multiplie processes, map+reduce)
 	Paragraphs = find_all_nodes(<<"p">>, Tree),
 	Tree1 = lists:foldl(
 		fun(P, TreeAcc) ->
 			modify_score(get_parent_ref(P), TreeAcc, 1) % +1 to parent for each inner <p> 
+			% TODO: replace with ListAcc and [{1, ParentRef}|ListAcc] - map phaze!!!
 		end, Tree, Paragraphs),
 	UniqParents = lists:foldl( % building list of unique parent refs for all <p>'s
 		fun(P, ParentRefList) -> 
@@ -420,13 +426,14 @@ score_tree(Tree) ->
 				false -> [ParentRef | ParentRefList]
 			end
 		end, [], Paragraphs),
-	lists:foldl(
+	lists:foldl( % replace with MAP phase in parallel !!!
 		fun(ParentRef, TreeAcc) ->
 			Parent = find_node(ParentRef, TreeAcc),
 			Score1 = score_by_class_or_id(Parent),
 			Commas = count_commas(Parent),
 			modify_score(ParentRef, TreeAcc, Commas+Score1)
 		end, Tree1, UniqParents).
+		% TODO: REDUCE phaze here
 
 %% @spec get_max_score_ref(scored_html_node()) -> reference()
 %% @doc finds ref to node with maximum readability score
