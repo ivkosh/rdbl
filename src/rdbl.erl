@@ -134,7 +134,7 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 			case Out of % if content body starts from <h1> we assume page has its own title in body, keeping it
 				[{<<"h1">>, _, _}|_] -> 
 					Out2 = Out;
-				[{<<"div">>, _, {<<"h1">>, _, _}}|_] -> 
+				[{<<"div">>, _, [{<<"h1">>, _, _}|_]}|_] -> 
 					Out2 = Out;
 				_ -> 
 					Out2 = [{<<"h1">>, [], TitleStr} | Out] % adding page <title> in any other case as <h1>
