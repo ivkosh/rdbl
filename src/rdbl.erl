@@ -257,12 +257,14 @@ remove_node(Key, [H|T]) -> [remove_node(Key, H) | remove_node(Key, T)]. % proces
 %%
 %% @doc example: replace_node(<<"br">>, <<"p">>, HtmlTree) -> HtmlTreeWithBrReplacedToP
 %% @doc example: replace_node(<<"br">>, <<"br">>, fun(L)->TransformedL end, HtmlTree) -> HtmlTreeWithBrReplacedToP
-replace_node({Key, NewKey}, NodeIn) -> replace_node({Key, NewKey}, fun(L)->L end, NodeIn).
+replace_node(Ks, NodeIn) -> replace_node(Ks, fun(L)->L end, NodeIn).
 %
-replace_node({_K, _NK}, _Func, NodeIn) when is_binary(NodeIn) -> NodeIn;
-replace_node({_K, _NK}, _Func, {comment, _}) -> []; % dropping comments
+replace_node(_Ks, _Func, NodeIn) when is_binary(NodeIn) -> NodeIn;
+replace_node(_Ks, _Func, {comment, _}) -> []; % dropping comments
 replace_node({Key, NewKey}, Func, {Key, Attr, Rest}) -> {NewKey, Func(Attr), replace_node({Key, NewKey}, Func, Rest)}; % Key found changing and processing subtree
 replace_node({Key, NewKey}, Func, {Key, S, Attr, Rest}) -> {NewKey, S, Func(Attr), replace_node({Key, NewKey}, Func, Rest)}; % Key found changing and processing subtree
+replace_node({Key, NewKey}, Func, {E, A, R}) -> {E, A, replace_node({Key, NewKey}, Func, R)}; % continue to subtree
+replace_node({Key, NewKey}, Func, {E, S, A, R}) -> {E, S, A, replace_node({Key, NewKey}, Func, R)}; % continue to subtree
 replace_node(KeyList=[_|_], Func, {Key, Attr, Rest}) -> % case when KeyList is list - changing multiple keys in one walk of tree
 	case lists:keyfind(Key, 1, KeyList) of
 		{Key, NewKey} -> {NewKey, Func(Attr), replace_node(KeyList, Func, Rest)}; % Key found changing and processing subtree
@@ -273,10 +275,8 @@ replace_node(KeyList=[_|_], Func, {Key, S, Attr, Rest}) ->
 		{Key, NewKey} -> {NewKey, S, Func(Attr), replace_node(KeyList, Func, Rest)}; % Key found changing and processing subtree
 		false         -> {Key, S, Attr, replace_node(KeyList, Func, Rest)}
 	end;
-replace_node({Key, NewKey}, Func, {E, A, R}) -> {E, A, replace_node({Key, NewKey}, Func, R)}; % continue to subtree
-replace_node({Key, NewKey}, Func, {E, S, A, R}) -> {E, S, A, replace_node({Key, NewKey}, Func, R)}; % continue to subtree
-replace_node({_, _}, _, []) -> [];
-replace_node({Key, NewKey}, Func, [H|T]) -> [replace_node({Key, NewKey}, Func, H) | replace_node({Key, NewKey}, Func, T)]. % processing list recursively
+replace_node(_, _, []) -> [];
+replace_node(Ks, Func, [H|T]) -> [replace_node(Ks, Func, H) | replace_node(Ks, Func, T)]. % processing list recursively
 
 %% @spec brbr_to_p(html_node() | scored_html_node()) -> html_node() | scored_html_node()
 %% @doc replaces more than 2 <br>s in row with <p>
