@@ -116,10 +116,10 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 			ScoredTree = score_tree(
 				init_scores(
 					% converting urls in <a> and <img> to absolute urls
-					% TODO: ! rewrite replace node to work with list of tags (to pass once on tree)
-					replace_node({<<"a">>,   <<"a">>},   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
-					replace_node({<<"img">>, <<"img">>}, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
-						clean_html_tree({<<"div">>, [], TreeBody}))) % converting body to div
+					replace_node(
+						[{<<"a">>,   <<"a">>}, {<<"img">>, <<"img">>}],   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
+						clean_html_tree({<<"div">>, [], TreeBody}) % converting body to div
+					)
 				)
 			),
 			OptimumRef = get_max_score_ref(ScoredTree),
@@ -261,16 +261,18 @@ replace_node({Key, NewKey}, NodeIn) -> replace_node({Key, NewKey}, fun(L)->L end
 %
 replace_node({_K, _NK}, _Func, NodeIn) when is_binary(NodeIn) -> NodeIn;
 replace_node({_K, _NK}, _Func, {comment, _}) -> []; % dropping comments
-replace_node({Key, NewKey}, Func, {Key, Attr, Rest}) when is_binary(Key) -> {NewKey, Func(Attr), replace_node({Key, NewKey}, Func, Rest)}; % Key found changing and processing subtree
-replace_node({Key, NewKey}, Func, {Key, S, Attr, Rest}) when is_binary(Key) -> {NewKey, S, Func(Attr), replace_node({Key, NewKey}, Func, Rest)}; % Key found changing and processing subtree
-
-
-%%%%replace_node(KeyList=[_|_], _NewKey, Func, {Key, Attr, Rest}) when is_binary(Key) -> {NewKey, Func(Attr), replace_node(Key, NewKey, Func, Rest)}; % Key found changing and processing subtree
-
-%replace_node({Key, 
-
-
-%!!!!
+replace_node({Key, NewKey}, Func, {Key, Attr, Rest}) -> {NewKey, Func(Attr), replace_node({Key, NewKey}, Func, Rest)}; % Key found changing and processing subtree
+replace_node({Key, NewKey}, Func, {Key, S, Attr, Rest}) -> {NewKey, S, Func(Attr), replace_node({Key, NewKey}, Func, Rest)}; % Key found changing and processing subtree
+replace_node(KeyList=[_|_], Func, {Key, Attr, Rest}) -> % case when KeyList is list - changing multiple keys in one walk of tree
+	case lists:keyfind(Key, 1, KeyList) of
+		{Key, NewKey} -> {NewKey, Func(Attr), replace_node(KeyList, Func, Rest)}; % Key found changing and processing subtree
+		false         -> {Key, Attr, replace_node(KeyList, Func, Rest)}
+	end;
+replace_node(KeyList=[_|_], Func, {Key, S, Attr, Rest}) ->
+	case lists:keyfind(Key, 1, KeyList) of
+		{Key, NewKey} -> {NewKey, S, Func(Attr), replace_node(KeyList, Func, Rest)}; % Key found changing and processing subtree
+		false         -> {Key, S, Attr, replace_node(KeyList, Func, Rest)}
+	end;
 replace_node({Key, NewKey}, Func, {E, A, R}) -> {E, A, replace_node({Key, NewKey}, Func, R)}; % continue to subtree
 replace_node({Key, NewKey}, Func, {E, S, A, R}) -> {E, S, A, replace_node({Key, NewKey}, Func, R)}; % continue to subtree
 replace_node({_, _}, _, []) -> [];
