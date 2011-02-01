@@ -13,7 +13,7 @@
 -define(DEBUG, 1).
 
 -ifdef(DEBUG).
--export([find_node/2, find_all_nodes/2, remove_node/2, replace_node/3, replace_node/4]).
+-export([find_node/2, find_all_nodes/2, remove_node/2, replace_node/2, replace_node/3]).
 -export([fetch_page/1, simplify_page/3]).
 -export([brbr_to_p/1, count_commas/1, clean_html_tree/1]).
 -export([init_scores/1, clean_scores/1, modify_score/3, get_score/1, get_ref/1, get_parent_ref/1, score_tree/1, score_list/1]).
@@ -117,8 +117,8 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 				init_scores(
 					% converting urls in <a> and <img> to absolute urls
 					% TODO: ! rewrite replace node to work with list of tags (to pass once on tree)
-					replace_node(<<"a">>,   <<"a">>,   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
-					replace_node(<<"img">>, <<"img">>, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
+					replace_node({<<"a">>,   <<"a">>},   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
+					replace_node({<<"img">>, <<"img">>}, fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
 						clean_html_tree({<<"div">>, [], TreeBody}))) % converting body to div
 				)
 			),
@@ -248,23 +248,33 @@ remove_node(Key, {E, S, A, R}) -> {E, S, A, remove_node(Key, R)}; % continue to 
 remove_node(_, []) -> [];
 remove_node(Key, [H|T]) -> [remove_node(Key, H) | remove_node(Key, T)]. % processing list
 
-%% @spec replace_node(binary(), binary(), fun( [html_attr()] ) -> [html_attr()], html_node() | scored_html_node()) -> html_node() | scored_html_node().
+%% @spec replace_node({binary(), binary()}|[{binary(), binary()}], fun( [html_attr()] ) -> [html_attr()], html_node() | scored_html_node()) -> html_node() | scored_html_node().
 %% @doc HTML tag & attribute replacer.
+%% @doc First parameter is tuple of two binaries: {Key, NewKey} or list of such tuples to replace 
+%% @doc multiple keys at once in one run on html tree.
 %% @doc Func is used to transform list of tag attributes: fun(AttrList) -> ModifiedAttrList
 %% @doc if Func is omitted, F(L)->L end is used, e.g. list of attrs will be not modified at all.
 %%
 %% @doc example: replace_node(<<"br">>, <<"p">>, HtmlTree) -> HtmlTreeWithBrReplacedToP
 %% @doc example: replace_node(<<"br">>, <<"br">>, fun(L)->TransformedL end, HtmlTree) -> HtmlTreeWithBrReplacedToP
-replace_node(Key, NewKey, NodeIn) -> replace_node(Key, NewKey, fun(L)->L end, NodeIn).
+replace_node({Key, NewKey}, NodeIn) -> replace_node({Key, NewKey}, fun(L)->L end, NodeIn).
 %
-replace_node(_K, _NK, _Func, NodeIn) when is_binary(NodeIn) -> NodeIn;
-replace_node(_K, _NK, _Func, {comment, _}) -> []; % dropping comments
-replace_node(Key, NewKey, Func, {Key, Attr, Rest}) -> {NewKey, Func(Attr), replace_node(Key, NewKey, Func, Rest)}; % Key found changing and processing subtree
-replace_node(Key, NewKey, Func, {Key, S, Attr, Rest}) -> {NewKey, S, Func(Attr), replace_node(Key, NewKey, Func, Rest)}; % Key found changing and processing subtree
-replace_node(Key, NewKey, Func, {E, A, R}) -> {E, A, replace_node(Key, NewKey, Func, R)}; % continue to subtree
-replace_node(Key, NewKey, Func, {E, S, A, R}) -> {E, S, A, replace_node(Key, NewKey, Func, R)}; % continue to subtree
-replace_node(_, _, _, []) -> [];
-replace_node(Key, NewKey, Func, [H|T]) -> [replace_node(Key, NewKey, Func, H) | replace_node(Key, NewKey, Func, T)]. % processing list recursively
+replace_node({_K, _NK}, _Func, NodeIn) when is_binary(NodeIn) -> NodeIn;
+replace_node({_K, _NK}, _Func, {comment, _}) -> []; % dropping comments
+replace_node({Key, NewKey}, Func, {Key, Attr, Rest}) when is_binary(Key) -> {NewKey, Func(Attr), replace_node({Key, NewKey}, Func, Rest)}; % Key found changing and processing subtree
+replace_node({Key, NewKey}, Func, {Key, S, Attr, Rest}) when is_binary(Key) -> {NewKey, S, Func(Attr), replace_node({Key, NewKey}, Func, Rest)}; % Key found changing and processing subtree
+
+
+%%%%replace_node(KeyList=[_|_], _NewKey, Func, {Key, Attr, Rest}) when is_binary(Key) -> {NewKey, Func(Attr), replace_node(Key, NewKey, Func, Rest)}; % Key found changing and processing subtree
+
+%replace_node({Key, 
+
+
+%!!!!
+replace_node({Key, NewKey}, Func, {E, A, R}) -> {E, A, replace_node({Key, NewKey}, Func, R)}; % continue to subtree
+replace_node({Key, NewKey}, Func, {E, S, A, R}) -> {E, S, A, replace_node({Key, NewKey}, Func, R)}; % continue to subtree
+replace_node({_, _}, _, []) -> [];
+replace_node({Key, NewKey}, Func, [H|T]) -> [replace_node({Key, NewKey}, Func, H) | replace_node({Key, NewKey}, Func, T)]. % processing list recursively
 
 %% @spec brbr_to_p(html_node() | scored_html_node()) -> html_node() | scored_html_node()
 %% @doc replaces more than 2 <br>s in row with <p>
