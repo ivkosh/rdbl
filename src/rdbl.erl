@@ -395,14 +395,20 @@ get_score(Node) ->
 score_by_class_or_id({_, _, Attrs, _})-> score_by_class_or_id(Attrs);
 score_by_class_or_id([]) -> 0;
 score_by_class_or_id(Attrs=[_|_]) ->
-	AttrVals = [ V || {K, V} <- [Attrs], (K == <<"id">>) or (K == <<"class">>) ],
+	AttrVals = [ V || {K, V} <- [Attrs], (K == <<"id">>) orelse (K == <<"class">>) ],
 	if 
 		AttrVals == [] -> 0; % no id or class (list is empty)
 		true -> % e.g. we have id or class or both
-			case lists:foldl(fun(El, Acc) -> Acc or (re:run(El, ?RE_NEGATIVE, [{capture, none}]) == match) end, false, AttrVals) of
+			case lists:foldl(
+					fun(El, Acc) -> 
+							Acc orelse (re:run(El, ?RE_NEGATIVE, [{capture, none}]) == match) 
+					end, false, AttrVals) of
 				true -> -50;
 				false ->
-					case lists:foldl(fun(El, Acc) -> Acc or (re:run(El, ?RE_POSITIVE, [{capture, none}]) == match) end, false, AttrVals) of
+					case lists:foldl(
+							fun(El, Acc) -> 
+									Acc orelse (re:run(El, ?RE_POSITIVE, [{capture, none}]) == match) 
+							end, false, AttrVals) of
 						true -> 25;
 						false -> 0
 					end
