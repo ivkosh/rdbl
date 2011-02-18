@@ -6,3 +6,5 @@ ebin/*
 .settings/*
 .project*
 TODO
+doc/*
+.eunit/*
