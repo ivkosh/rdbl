@@ -24,4 +24,8 @@ See other examples in rdbl.erl.
 Dependencies
 ------------
 Library uses [mochiweb](https://github.com/mochi/mochiweb) html library to parse HTML-content (included).
-
+Only following files from mochiweb needed:
+mochinum.erl
+mochiutf8.erl
+mochiweb_charref.erl
+mochiweb_html.erl

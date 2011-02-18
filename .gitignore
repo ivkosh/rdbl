@@ -8,3 +8,4 @@ ebin/*
 TODO
 doc/*
 .eunit/*
+deps/*
