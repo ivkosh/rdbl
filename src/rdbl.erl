@@ -20,7 +20,7 @@
 -export([full_url/2, url_context/1]).
 -endif.
 
-%% type score():
+%% @type score():
 %% Keeps readability score and additional references for every HTML tree element
 -record(score, {
 		ref,
@@ -36,7 +36,7 @@
 % or maybe commas are not counted???
 
 %%
-%% type scored_html_node() = {string(), score(), [html_attr()], [html_node() | string()]}
+%% @type scored_html_node() = {string(), score(), [html_attr()], [html_node() | string()]}
 %%
 %% See definitions of html_node() and html_attr() in mochiweb_html.erl
 
@@ -430,6 +430,25 @@ score_by_class_or_id(Attrs=[_|_]) ->
 %% @spec score_tree(scored_html_node()) -> scored_html_node()
 %% @doc score whole html tree depending on its contents
 score_tree(Tree) -> % TODO: do score_tree in parallel (multiplie processes, map+reduce)
+	Paragraphs = find_all_nodes(<<"p">>, Tree),
+	Map1 = [ {1, get_parent_ref(P)} || P <- Paragraphs ], % список вида {1, Parent} для каждого P (пары могут повторяться)
+	UniqParents = lists:foldl( % building list of unique parent refs for all <p>'s
+		fun(P, ParentRefList) -> 
+			ParentRef = get_parent_ref(P),
+			case lists:member(ParentRef, ParentRefList) of
+				true  -> ParentRefList;
+				false -> [ParentRef | ParentRefList]
+			end
+		end, [], Paragraphs),
+	% replace with MAP phase in parallel !!!
+	Map2 = lists:map(fun(P_ref) -> Parent = find_node(P_ref, Tree), {score_by_class_or_id(Parent)+count_commas(Parent), P_ref} end, UniqParents),
+	lists:foldl( % TODO: REDUCE phaze here 
+		fun({Score, P_ref}, TreeAcc) ->
+			modify_score(P_ref, TreeAcc, Score)
+		end, Tree, Map1++Map2).
+		
+
+score_tree1(Tree) -> % TODO: do score_tree in parallel (multiplie processes, map+reduce)
 	Paragraphs = find_all_nodes(<<"p">>, Tree),
 	Tree1 = lists:foldl(
 		fun(P, TreeAcc) ->
