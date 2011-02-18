@@ -431,7 +431,7 @@ score_by_class_or_id(Attrs=[_|_]) ->
 %% @doc score whole html tree depending on its contents
 score_tree(Tree) -> % TODO: do score_tree in parallel (multiplie processes, map+reduce)
 	Paragraphs = find_all_nodes(<<"p">>, Tree),
-	Map1 = [ {1, get_parent_ref(P)} || P <- Paragraphs ], % список вида {1, Parent} для каждого P (пары могут повторяться)
+	%Map1 = [ {1, get_parent_ref(P)} || P <- Paragraphs ], % список вида {1, Parent} для каждого P (пары могут повторяться)
 	UniqParents = lists:foldl( % building list of unique parent refs for all <p>'s
 		fun(P, ParentRefList) -> 
 			ParentRef = get_parent_ref(P),
@@ -440,35 +440,46 @@ score_tree(Tree) -> % TODO: do score_tree in parallel (multiplie processes, map+
 				false -> [ParentRef | ParentRefList]
 			end
 		end, [], Paragraphs),
-	% replace with MAP phase in parallel !!!
-	Map2 = score_parallel(Tree, UniqParents),
-	lists:foldl( % TODO: REDUCE phaze here 
+	ScoreList = score_parallel(Tree, UniqParents, Paragraphs), % вернет список вида { Score, Element }, каждый Element встречается 1 раз
+	lists:foldl( 
 		fun({Score, P_ref}, TreeAcc) ->
-			modify_score(P_ref, TreeAcc, Score)
-		end, Tree, Map1++Map2).
+				if 
+					Score /= 0 -> 
+						modify_score(P_ref, TreeAcc, Score);
+					true -> % если в процессе reduce score стало равно 0, то не вносим измненения в дерево для этого элемента
+						TreeAcc
+				end
+		end, Tree, ScoreList).
 		
 
-score_parallel(Tree, UniqParents) -> 
+score_parallel(Tree, UniqParents, Paragraphs) -> 
 	process_flag(trap_exit, true),
 	S = self(),
-	lists:foreach(fun(P_ref) -> 
-				spawn(fun() -> do_score(S, Tree, P_ref) end) 
-		end, UniqParents), 
-	gather(length(UniqParents), []).
+	lists:foreach(fun(P_ref) -> spawn(fun() -> do_score(S, Tree, P_ref) end) end, UniqParents), 
+	lists:foreach(fun(P) -> S ! { 1, get_parent_ref(P) } end, Paragraphs),
+	Dict0 = dict:new(),
+	Dict1 = gather(length(Paragraphs) + 2*length(UniqParents), Dict0), % *2 тк do_score запускает 2 процесса
+	dict:fold(fun(K, ValList, L)-> [{lists:foldl(fun(E, Acc)-> E+Acc end, 0, ValList), K}| L] end, [], Dict1).
 
 do_score(ParentPid, Tree, P_ref) -> 
 	ParentElem = find_node(P_ref, Tree),
-	Score1 = score_by_class_or_id(ParentElem),
-	Score2 = count_commas(ParentElem), 
-	ParentPid ! {Score1+Score2, P_ref}.
+	spawn(fun()-> ParentPid ! { score_by_class_or_id(ParentElem), P_ref} end),
+	spawn(fun()-> ParentPid ! { count_commas(ParentElem), P_ref} end). 
 
-gather(0, L) -> L;
-gather(N, L) ->
+gather(0, Dict) -> Dict;
+gather(N, Dict) ->
 	receive
 		{Score, P_ref} -> 
-			gather(N-1, [{Score, P_ref} | L]);
+			case dict:is_key(P_ref, Dict) of
+				true -> 
+					Dict1 = dict:append(P_ref, Score, Dict),
+					gather(N-1, Dict1);
+				false ->
+					Dict1 = dict:store(P_ref, [Score], Dict),
+					gather(N-1, Dict1)
+			end;
 		{'EXIT', _, _Why} ->
-			gather(N-1, L)
+			gather(N-1, Dict)
 	end.
 
 %% @spec get_max_score_ref(scored_html_node()) -> reference()
