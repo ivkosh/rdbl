@@ -20,7 +20,7 @@
 -export([full_url/2, url_context/1]).
 -endif.
 
-%% @type score():
+%% type score():
 %% Keeps readability score and additional references for every HTML tree element
 -record(score, {
 		ref,
@@ -36,7 +36,7 @@
 % or maybe commas are not counted???
 
 %%
-%% @type scored_html_node() = {string(), score(), [html_attr()], [html_node() | string()]}
+%% type scored_html_node() = {string(), score(), [html_attr()], [html_node() | string()]}
 %%
 %% See definitions of html_node() and html_attr() in mochiweb_html.erl
 
@@ -48,7 +48,7 @@
 
 %% @spec simplify_url(string()) -> string()
 %% @doc fetches url, simplifies its content and returns simplified page as a string()
-%% @doc example: simplify_url("http://news.yandex.ru/") -> SimplifiedPageText
+%% example: simplify_url("http://news.yandex.ru/") -> SimplifiedPageText
 simplify_url(Url) ->
 	{ContentType, Body} = fetch_page(Url), % TODO: делать в отдельном процессе и слать сообщение по завершению
 	Ctx = url_context(Url),
@@ -56,7 +56,7 @@ simplify_url(Url) ->
 
 %% @spec simplify_url(string(), string()) -> ok
 %% @doc fetches url, simplifies its content and saves to file
-%% @doc example: simplify_url("http://news.yandex.ru/", "out.html")
+%% example: simplify_url("http://news.yandex.ru/", "out.html")
 simplify_url(Url, FileName) ->
 	Page = simplify_url(Url),
 	{ok, F} = file:open(FileName, [binary, write]), % TODO: check if file open
@@ -66,7 +66,7 @@ simplify_url(Url, FileName) ->
 
 %% @spec simplify_file(string(), string()) -> ok
 %% @doc reads file from disk, simplifies its content and saves to file
-%% @doc example: simplify_url("index.html", "out.html")
+%% example: simplify_url("index.html", "out.html")
 simplify_file(FileNameIn, FileNameOut) ->
 	{ok, Html} = file:read_file(FileNameIn),% TODO: check errors
 	Page = simplify_page(Html),
@@ -103,8 +103,8 @@ extract_content_type(Tree, DefaultContentType) ->
 
 %% @spec simplify_page(string(), {string(), string()}, string()) -> string()
 %% @doc main function
-%% @doc takes document contens (Body) and document context (Ctx, see url_context/1)
-%% @doc returns simplified page as a string()
+%% takes document contens (Body) and document context (Ctx, see url_context/1)
+%% returns simplified page as a string()
 simplify_page(Body, Ctx, DefaultContentType) ->
 	try mochiweb_html:parse(Body) of % parse() will not work if Body contains no html tags
 		TreeOrig -> 
@@ -178,11 +178,11 @@ find_node(Key, HtmlNode) when is_binary(Key)    -> find_node_bykey(Key, HtmlNode
 %% @doc the same as find_node(), but returns all nodes with specific tag as a list 
 find_all_nodes(Key, HtmlNode) when is_binary(Key) -> find_node_bykey(Key, HtmlNode, multi).
 
-%% @spec find_node_by_key(binary(), html_node() | scored_html_node(), first | multi) -> html_node() | scored_html_node() | [html_node() | scored_html_node()]
+%% @spec find_node_bykey(binary(), html_node() | scored_html_node(), first | multi) -> html_node() | scored_html_node() | [html_node() | scored_html_node()]
 %% @doc helper function for find_node() and find_all_nodes()
-%% @doc returns: 
-%% @doc - first element found as html_node() | scored_html_node() if SearchType != multi 
-%% @doc - list of all found elements as [html_node() | scored_html_node()] if SearchType == multi
+%% returns: 
+%% - first element found as html_node() | scored_html_node() if SearchType != multi 
+%% - list of all found elements as [html_node() | scored_html_node()] if SearchType == multi
 find_node_bykey(_, HtmlNode, _)       when is_binary(HtmlNode) -> [];  % don't searching for leafs
 find_node_bykey(_, {comment, _}, _) -> [];    % comments in mochiweb_html:parse are 2-element tuples, dropping them
 find_node_bykey(Key, Elem, SearchType) when is_tuple(Elem) ->        % Element found
@@ -214,7 +214,7 @@ find_node_bykey(Key, [H|T], SearchType) ->
 			find_node_bykey(Key, T, SearchType)
 	end.
 			
-%% @spec find_node_by_ref(reference(), scored_html_node()) -> scored_html_node()
+%% @spec find_node_byref(reference(), scored_html_node()) -> scored_html_node()
 %% @doc helper function for find_node()
 find_node_byref(_Ref, HtmlNode) when is_binary(HtmlNode) -> []; % leaf is not an option
 find_node_byref(_, {comment, _}) -> [];                         % comment is not an option
@@ -232,7 +232,7 @@ find_node_byref(Ref, [H|T]) -> % walk list if it is not empty
 
 %% @spec remove_node(binary() | [binary()], html_node() | scored_html_node()) -> html_node() | scored_html_node()
 %% @doc HTML tag remover. Removes from node all subtrees with Key and returns cleaned html_node() | scored_html_node()
-%% @doc example: remove_node(<<"script">>, HtmlTree) -> HtmlTreeWithoutScripts
+%% example: remove_node(<<"script">>, HtmlTree) -> HtmlTreeWithoutScripts
 % if Key is a list - removing all list elements from tree
 remove_node([], HtmlTree) -> HtmlTree;
 % TODO: неэфективно - дерево пробегается столько раз, какова длина списка ключей.
@@ -250,13 +250,13 @@ remove_node(Key, [H|T]) -> [remove_node(Key, H) | remove_node(Key, T)]. % proces
 
 %% @spec replace_node({binary(), binary()}|[{binary(), binary()}], fun( [html_attr()] ) -> [html_attr()], html_node() | scored_html_node()) -> html_node() | scored_html_node().
 %% @doc HTML tag & attribute replacer.
-%% @doc First parameter is tuple of two binaries: {Key, NewKey} or list of such tuples to replace 
-%% @doc multiple keys at once in one run on html tree.
-%% @doc Func is used to transform list of tag attributes: fun(AttrList) -> ModifiedAttrList
-%% @doc if Func is omitted, F(L)->L end is used, e.g. list of attrs will be not modified at all.
+%% First parameter is tuple of two binaries: {Key, NewKey} or list of such tuples to replace 
+%% multiple keys at once in one run on html tree.
+%% Func is used to transform list of tag attributes: fun(AttrList) -> ModifiedAttrList
+%% if Func is omitted, F(L)->L end is used, e.g. list of attrs will be not modified at all.
 %%
-%% @doc example: replace_node(<<"br">>, <<"p">>, HtmlTree) -> HtmlTreeWithBrReplacedToP
-%% @doc example: replace_node(<<"br">>, <<"br">>, fun(L)->TransformedL end, HtmlTree) -> HtmlTreeWithBrReplacedToP
+%% example: replace_node(<<"br">>, <<"p">>, HtmlTree) -> HtmlTreeWithBrReplacedToP
+%% example: replace_node(<<"br">>, <<"br">>, fun(L)->TransformedL end, HtmlTree) -> HtmlTreeWithBrReplacedToP
 replace_node(Ks, NodeIn) -> replace_node(Ks, fun(L)->L end, NodeIn).
 %
 replace_node(_Ks, _Func, NodeIn) when is_binary(NodeIn) -> NodeIn;
@@ -308,8 +308,8 @@ count_commas(Leaf) when is_binary(Leaf) -> lists:foldl(fun(E, S) -> if E == $, -
 
 %% @spec init_scores(html_node()) -> scored_html_node()
 %% @doc transforms html_node() to scored_html_node(). It now has 4 elements in tuple (not 3 as in mochiweb_html type), 
-%% @doc the second element in tuple is Score - record of #score, containing readability score, current element ref
-%% @doc and ref to parent of current element (see -record(score, ...) below)
+%% the second element in tuple is Score - record of #score, containing readability score, current element ref
+%% and ref to parent of current element (see -record(score, ...) below)
 init_scores(Tree) -> init_scores(Tree, make_ref()). % adding reference for topmost element too
 %
 init_scores(R, _) when is_binary(R) -> R;
@@ -330,7 +330,7 @@ clean_scores([H|T]) -> [clean_scores(H) | clean_scores(T)].
 
 %% @spec modify_score(reference(), scored_html_node(), int()) -> scored_html_node()
 %% @doc modify readability score for specific element on scored tree. Score is added to current node score 
-%% @doc e.g. int() is ScoreDiff, to subtract score for element pass negative int()
+%% e.g. int() is ScoreDiff, to subtract score for element pass negative int()
 modify_score(_, Leaf, _) when is_binary(Leaf) -> Leaf;
 modify_score(_, {comment, _}, _) -> []; 
 modify_score(Ref, {Key, #score{ref=Ref, readability=Rdbl, parent=ParentRef}, A, R}, Score) -> {Key, #score{ref=Ref, readability=Rdbl+Score, parent=ParentRef}, A, R};
@@ -471,7 +471,7 @@ get_max_score_ref(Tree) ->
 
 %% @spec score_list(scored_html_node()) -> [{reference(), int()}]
 %% @doc builds list of pairs {Node_Ref, Node_Score} from html tree
-%% @doc helper function for get_max_score_ref()
+%% helper function for get_max_score_ref()
 score_list(HtmlNode) when is_binary(HtmlNode) -> []; % leaf
 score_list({comment, _}) -> [];       
 score_list({_, #score{readability=Rdbl, ref=Ref}, _, R}) -> [{Ref, Rdbl} | score_list(R)];	
@@ -481,7 +481,7 @@ score_list([H|T]) -> score_list(H) ++ score_list(T).
 
 %% @spec url_context(string()) -> {string(), string()}
 %% @doc returns the  domain, and current context path. 
-%% @doc example: url_context("http://www.some.domain.com/content/index.html) -> {"http://www.some.domain.com", "/content"}
+%% example: url_context("http://www.some.domain.com/content/index.html) -> {"http://www.some.domain.com", "/content"}
 url_context(URL) ->
     {Proto, _, Root, _Port, Path, _Query} = http_uri:parse(URL), 
     Ctx = string:sub_string(Path, 1, string:rstr(Path,"/")),
