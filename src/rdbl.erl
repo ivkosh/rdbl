@@ -449,24 +449,27 @@ score_tree(Tree) -> % TODO: do score_tree in parallel (multiplie processes, map+
 		
 
 score_parallel(Tree, UniqParents) -> 
+	process_flag(trap_exit, true),
 	S = self(),
-	Ref = make_ref(), 
-	Pids = lists:map(fun(P_ref) -> 
-				spawn(fun() -> do_score(S, Ref, Tree, P_ref) end) 
+	lists:foreach(fun(P_ref) -> 
+				spawn(fun() -> do_score(S, Tree, P_ref) end) 
 		end, UniqParents), 
-	gather(Pids, Ref).
+	gather(length(UniqParents), []).
 
-do_score(ParentPid, Ref, Tree, P_ref) -> 
+do_score(ParentPid, Tree, P_ref) -> 
 	ParentElem = find_node(P_ref, Tree),
 	Score1 = score_by_class_or_id(ParentElem),
 	Score2 = count_commas(ParentElem), 
-	ParentPid ! {self(), Ref, {Score1+Score2, P_ref}}.
+	ParentPid ! {Score1+Score2, P_ref}.
 
-gather([Pid|T], Ref) ->
+gather(0, L) -> L;
+gather(N, L) ->
 	receive
-		{Pid, Ref, Ret} -> [Ret|gather(T, Ref)] 
-	end;
-gather([], _) -> [].
+		{Score, P_ref} -> 
+			gather(N-1, [{Score, P_ref} | L]);
+		{'EXIT', _, _Why} ->
+			gather(N-1, L)
+	end.
 
 %% @spec get_max_score_ref(scored_html_node()) -> reference()
 %% @doc finds ref to node with maximum readability score
