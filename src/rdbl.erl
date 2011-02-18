@@ -441,36 +441,32 @@ score_tree(Tree) -> % TODO: do score_tree in parallel (multiplie processes, map+
 			end
 		end, [], Paragraphs),
 	% replace with MAP phase in parallel !!!
-	Map2 = lists:map(fun(P_ref) -> Parent = find_node(P_ref, Tree), {score_by_class_or_id(Parent)+count_commas(Parent), P_ref} end, UniqParents),
+	Map2 = score_parallel(Tree, UniqParents),
 	lists:foldl( % TODO: REDUCE phaze here 
 		fun({Score, P_ref}, TreeAcc) ->
 			modify_score(P_ref, TreeAcc, Score)
 		end, Tree, Map1++Map2).
 		
 
-score_tree1(Tree) -> % TODO: do score_tree in parallel (multiplie processes, map+reduce)
-	Paragraphs = find_all_nodes(<<"p">>, Tree),
-	Tree1 = lists:foldl(
-		fun(P, TreeAcc) ->
-			modify_score(get_parent_ref(P), TreeAcc, 1) % +1 to parent for each inner <p> 
-			% TODO: replace with ListAcc and [{1, ParentRef}|ListAcc] - map phaze!!!
-		end, Tree, Paragraphs),
-	UniqParents = lists:foldl( % building list of unique parent refs for all <p>'s
-		fun(P, ParentRefList) -> 
-			ParentRef = get_parent_ref(P),
-			case lists:member(ParentRef, ParentRefList) of
-				true  -> ParentRefList;
-				false -> [ParentRef | ParentRefList]
-			end
-		end, [], Paragraphs),
-	lists:foldl( % replace with MAP phase in parallel !!!
-		fun(ParentRef, TreeAcc) ->
-			Parent = find_node(ParentRef, TreeAcc),
-			Score1 = score_by_class_or_id(Parent),
-			Commas = count_commas(Parent),
-			modify_score(ParentRef, TreeAcc, Commas+Score1)
-		end, Tree1, UniqParents).
-		% TODO: REDUCE phaze here
+score_parallel(Tree, UniqParents) -> 
+	S = self(),
+	Ref = make_ref(), 
+	Pids = lists:map(fun(P_ref) -> 
+				spawn(fun() -> do_score(S, Ref, Tree, P_ref) end) 
+		end, UniqParents), 
+	gather(Pids, Ref).
+
+do_score(ParentPid, Ref, Tree, P_ref) -> 
+	ParentElem = find_node(P_ref, Tree),
+	Score1 = score_by_class_or_id(ParentElem),
+	Score2 = count_commas(ParentElem), 
+	ParentPid ! {self(), Ref, {Score1+Score2, P_ref}}.
+
+gather([Pid|T], Ref) ->
+	receive
+		{Pid, Ref, Ret} -> [Ret|gather(T, Ref)] 
+	end;
+gather([], _) -> [].
 
 %% @spec get_max_score_ref(scored_html_node()) -> reference()
 %% @doc finds ref to node with maximum readability score
