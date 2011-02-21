@@ -14,7 +14,7 @@
 
 -ifdef(DEBUG).
 -export([find_node/2, find_all_nodes/2, remove_node/2, replace_node/2, replace_node/3]).
--export([fetch_page/1).
+-export([fetch_page/1]).
 -export([brbr_to_p/1, count_commas/1, clean_html_tree/1]).
 -export([init_scores/1, clean_scores/1, modify_score/3, get_score/1, get_ref/1, get_parent_ref/1, score_tree/1, score_list/1]).
 -export([full_url/2, url_context/1]).
