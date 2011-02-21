@@ -352,7 +352,7 @@ fetch_page(Url) ->
 	inets:start(), % TODO: handle errors & not start if already started
 	ssl:start(),
 	% TODO: cache page - save to ets by url
-	case httpc:request(Url) of 
+	case http:request(Url) of 
 		{ok, {_, Hdrs, Body}} ->
 			case lists:keyfind("content-type", 1, Hdrs) of
 				{_, ContentType} ->
