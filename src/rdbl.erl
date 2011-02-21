@@ -8,13 +8,13 @@
 -author('Ivan Koshkin <ivan@koshkin.me>').
 -vsn('0.3').
 
--export([simplify_url/1, simplify_url/2, simplify_file/2, simplify_page/1]).
+-export([simplify_url/1, simplify_url/2, simplify_file/2, simplify_page/1, simplify_page/3]).
 
 -define(DEBUG, 1).
 
 -ifdef(DEBUG).
 -export([find_node/2, find_all_nodes/2, remove_node/2, replace_node/2, replace_node/3]).
--export([fetch_page/1, simplify_page/3]).
+-export([fetch_page/1).
 -export([brbr_to_p/1, count_commas/1, clean_html_tree/1]).
 -export([init_scores/1, clean_scores/1, modify_score/3, get_score/1, get_ref/1, get_parent_ref/1, score_tree/1, score_list/1]).
 -export([full_url/2, url_context/1]).
@@ -49,7 +49,8 @@
 %% @spec simplify_url(string()) -> string()
 %% @doc fetches url, simplifies its content and returns simplified page as a string()
 %% example: simplify_url("http://news.yandex.ru/") -> SimplifiedPageText
-simplify_url(Url) ->
+simplify_url(Url0) ->
+	Url = add_proto_if_none(Url0),
 	{ContentType, Body} = fetch_page(Url), % TODO: делать в отдельном процессе и слать сообщение по завершению
 	Ctx = url_context(Url),
 	simplify_page(Body, Ctx, ContentType).
@@ -524,4 +525,7 @@ full_url({_Root, _Context}, ComponentUrl="https://"++_) -> ComponentUrl;
 full_url({_Root, _Context}, ComponentUrl="ftp://"++_)   -> ComponentUrl;
 full_url({Root, Context}, ComponentUrl) -> Root ++ Context ++ "/" ++ ComponentUrl. % everything else is a relative path
 
-
+add_proto_if_none(U="http://"++_) -> U;
+add_proto_if_none(U="https://"++_) -> U;
+add_proto_if_none(U="ftp://"++_) -> U;
+add_proto_if_none(U) -> "http://"++U.
