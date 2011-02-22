@@ -30,6 +30,7 @@
 
 -define(RE_NEGATIVE, "\\b(comment|meta|footer|footnote)\\b").
 -define(RE_POSITIVE, "\\b(post|hentry|entry[-]?(content|text|body)?|article[-]?(content|text|body)?)\\b").
+-define(USER_AGENT, "Safari/5.0.3").
 
 % TODO: habrahabr.ru comments are entry-content-only and entry-content, fix this
 % maybe add dependency score algorithm from page url?
@@ -359,20 +360,24 @@ fetch_page(Url) ->
 	inets:start(), % TODO: handle errors & not start if already started
 	ssl:start(),
 	% TODO: cache page - save to ets by url
-	case httpc:request(Url) of 
-		{ok, {_, Hdrs, Body}} ->
-			case lists:keyfind("content-type", 1, Hdrs) of
-				{_, ContentType} ->
-					ContentType;
-				_ ->
-					ContentType = "text/html"
-			end,
-			{ContentType, Body};
-		{error, ErrVal} ->
-			{
-				"text/html",
-				io_lib:format(<<"<html><head><title>Error</title></head><body>Cannot fetch ~s - ~p</body></html>">>, [Url, ErrVal])
-			}
+	{ok, RequestId} = httpc:request(get, {Url, [{"User-Agent", ?USER_AGENT}]}, [{autoredirect, true}, {relaxed, true}], [{sync, false}, {receiver, self()}]),
+	receive
+		{http, {RequestId, Result}} ->
+			case Result of
+				{_, Hdrs, Body} ->
+					case lists:keyfind("content-type", 1, Hdrs) of
+						{_, ContentType} ->
+							ContentType;
+						_ ->
+							ContentType = "text/html"
+					end,
+					{ContentType, Body};
+				{error, ErrVal} ->
+					{
+						"text/html",
+						io_lib:format(<<"<html><head><title>Error</title></head><body>Cannot fetch ~s - ~p</body></html>">>, [Url, ErrVal])
+					}
+			end
 	end.
 
 %% @spec clean_html_tree(html_node() | scored_html_node()) -> html_node() | scored_html_node()
