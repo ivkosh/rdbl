@@ -163,7 +163,6 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 					}
 				]
 			},
-io:format("~p", [TreeOut]),
 			mochiweb_html:to_html(TreeOut)
 	catch 
 		error:{badmatch,_} -> 
