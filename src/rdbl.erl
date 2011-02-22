@@ -544,7 +544,7 @@ full_url({_Root, _Context}, ComponentUrl="https://"++_) -> ComponentUrl;
 full_url({_Root, _Context}, ComponentUrl="ftp://"++_)   -> ComponentUrl;
 full_url({Root, Context}, ComponentUrl) -> Root ++ Context ++ "/" ++ ComponentUrl. % everything else is a relative path
 
+% TODO: add case insesitive checking
 add_proto_if_none(U="http://"++_) -> U;
 add_proto_if_none(U="https://"++_) -> U;
-add_proto_if_none(U="ftp://"++_) -> U;
 add_proto_if_none(U) -> "http://"++U.
