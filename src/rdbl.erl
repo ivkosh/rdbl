@@ -107,7 +107,8 @@ extract_content_type(Tree, DefaultContentType) ->
 %% @doc main function
 %% takes document contens (Body) and document context (Ctx, see url_context/1)
 %% returns simplified page as a string()
-simplify_page(Body, Ctx, DefaultContentType) ->
+simplify_page(Body0, Ctx, DefaultContentType) ->
+	Body = re:replace(Body0, "&nbsp;", " ", [global]), % mochiweb_html:parse has a bug with &nbsp;, just hotfix
 	try mochiweb_html:parse(Body) of % parse() will not work if Body contains no html tags
 		TreeOrig -> 
 			TitleStr = get_title(TreeOrig),
@@ -359,7 +360,8 @@ fetch_page(Url) ->
 	inets:start(), % TODO: handle errors & not start if already started
 	ssl:start(),
 	% TODO: cache page - save to ets by url
-	{ok, RequestId} = httpc:request(get, {Url, [{"User-Agent", ?USER_AGENT}]}, [{autoredirect, true}, {relaxed, true}], [{sync, false}, {receiver, self()}]),
+	% TODO: replace http:request to httpc:request
+	{ok, RequestId} = http:request(get, {Url, [{"User-Agent", ?USER_AGENT}]}, [{autoredirect, true}, {relaxed, true}], [{sync, false}, {receiver, self()}]),
 	receive
 		{http, {RequestId, Result}} ->
 			case Result of
