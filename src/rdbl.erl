@@ -113,12 +113,17 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 			% save charset from <meta http-equiv="content-type" content="text/html; charset=utf-8" /> or/and from httpc:request
 			ContentType = extract_content_type(TreeOrig, list_to_binary(DefaultContentType)),
 			% TODO: what if content type from meta or request was not text/html? support this
-			{_, _, TreeBody} = find_node(<<"body">>, TreeOrig), 
+			case find_node(<<"body">>, TreeOrig) of
+				{_, _, TB} -> TreeBody = TB;
+				[]         -> TreeBody = [TreeOrig]; % actually need [], not _
+				[H|T]      -> TreeBody = [H|T]
+			end, 
 			ScoredTree = score_tree(
 				init_scores(
 					% converting urls in <a> and <img> to absolute urls
 					replace_node(
 						[{<<"a">>,   <<"a">>}, {<<"img">>, <<"img">>}],   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
+						% MAYBE TODO: remove all elements from <a> except href
 						clean_html_tree({<<"div">>, [], TreeBody}) % converting body to div
 					)
 				)
@@ -147,6 +152,7 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 							[
 								{<<"title">>, [], TitleStr}, 
 								{<<"meta">>, [{<<"http-equiv">>, <<"content-type">>}, {<<"content">>, ContentType}], []},
+								{<<"meta">>, [{<<"name">>, <<"viewport">>}, {<<"content">>, <<"width=480">>}], []},
 								{<<"style">>, [{<<"type">>, <<"text/css">>}], [<<"h1 { display: block; width: 100%; border-bottom: 1px solid #333; font-size: 1.2em; }">>]}
 							]
 					},
@@ -156,6 +162,7 @@ simplify_page(Body, Ctx, DefaultContentType) ->
 					}
 				]
 			},
+io:format("~p", [TreeOut]),
 			mochiweb_html:to_html(TreeOut)
 	catch 
 		error:{badmatch,_} -> 
@@ -352,7 +359,7 @@ fetch_page(Url) ->
 	inets:start(), % TODO: handle errors & not start if already started
 	ssl:start(),
 	% TODO: cache page - save to ets by url
-	case http:request(Url) of 
+	case httpc:request(Url) of 
 		{ok, {_, Hdrs, Body}} ->
 			case lists:keyfind("content-type", 1, Hdrs) of
 				{_, ContentType} ->
@@ -370,7 +377,7 @@ fetch_page(Url) ->
 
 %% @spec clean_html_tree(html_node() | scored_html_node()) -> html_node() | scored_html_node()
 %% @doc cleans first-level unreadable junk from html tree
-clean_html_tree(Tree) -> % prepDocument in readability.js
+clean_html_tree(Tree) -> 
 	% TODO: add: find max <frame> in frameset and use it as document
 	brbr_to_p( 
 		remove_node([<<"style">>, <<"link">>, <<"script">>, <<"noscript">>, <<"form">>, <<"object">>, <<"iframe">>], Tree)
@@ -378,8 +385,11 @@ clean_html_tree(Tree) -> % prepDocument in readability.js
 
 %% @spec get_title(html_node() | scored_html_node()) -> binary()
 get_title(Tree) ->
-	{_, _, TitleStr} = find_node(<<"title">>, Tree),
-	TitleStr.
+	case find_node(<<"title">>, Tree) of
+		{_, _, TitleStr} -> TitleStr;
+		[] -> "";
+		_ -> ''
+	end.
 
 %% @spec to_abs_url({binary(), binary()}, string()) -> {binary(), binary()}
 %% @doc helper function for simplify_page/2 - converts href & src in element attr to absolute path
