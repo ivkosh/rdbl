@@ -132,7 +132,7 @@ simplify_page(Body0, Ctx, DefaultContentType) ->
 			),
 			OptimumRef = get_max_score_ref(ScoredTree),
 %%			ContentBody = clean_scores(find_node(OptimumRef, ScoredTree)),
-ContentBody=ScoredTree,
+ContentBody=clean_scores(ScoredTree),
 			% do something if Content body is started with <td> or <tr>
 			case ContentBody of
 				{<<"td">>, _, CellContent} -> Out = CellContent;
