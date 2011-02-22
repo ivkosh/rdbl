@@ -361,24 +361,23 @@ fetch_page(Url) ->
 	ssl:start(),
 	% TODO: cache page - save to ets by url
 	% TODO: replace http:request to httpc:request
-	{ok, RequestId} = http:request(get, {Url, [{"User-Agent", ?USER_AGENT}]}, [{autoredirect, true}, {relaxed, true}], [{sync, false}, {receiver, self()}]),
-	receive
-		{http, {RequestId, Result}} ->
-			case Result of
-				{_, Hdrs, Body} ->
-					case lists:keyfind("content-type", 1, Hdrs) of
-						{_, ContentType} ->
-							ContentType;
-						_ ->
-							ContentType = "text/html"
-					end,
-					{ContentType, Body};
-				{error, ErrVal} ->
-					{
-						"text/html",
-						io_lib:format(<<"<html><head><title>Error</title></head><body>Cannot fetch ~s - ~p</body></html>">>, [Url, ErrVal])
-					}
-			end
+	case http:request(get, {Url, [{"User-Agent", ?USER_AGENT}]}, [{autoredirect, true}, {relaxed, true}], [{sync, false}, {receiver, self()}]) of
+		{ok, RequestId} ->
+			receive
+				{http, {RequestId, Result}} ->
+					case Result of
+						{_, Hdrs, Body} ->
+							case lists:keyfind("content-type", 1, Hdrs) of
+								{_, ContentType} ->
+									ContentType;
+								_ ->
+									ContentType = "text/html"
+							end,
+							{ContentType, Body};
+						{error, ErrVal} -> { "text/html", io_lib:format(<<"<html><head><title>Error</title></head><body>Cannot fetch ~s - ~p</body></html>">>, [Url, ErrVal]) }
+					end
+			end;
+		{error, ErrVal} -> { "text/html", io_lib:format(<<"<html><head><title>Error in URL</title></head><body>Cannot fetch ~s - ~p</body></html>">>, [Url, ErrVal]) }
 	end.
 
 %% @spec clean_html_tree(html_node() | scored_html_node()) -> html_node() | scored_html_node()
