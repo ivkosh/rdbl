@@ -126,7 +126,7 @@ simplify_page(Body0, Ctx, DefaultContentType) ->
 					replace_node(
 						[{<<"a">>,   <<"a">>}, {<<"img">>, <<"img">>}],   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
 						% MAYBE TODO: remove all elements from <a> except href
-						clean_html_tree({<<"div">>, [], TreeBody}) % converting body to div
+						clean_html_tree({<<"div">>, [], TreeBody}) % обрамляем содержимое <body> <div>ом
 					)
 				)
 			),
@@ -331,8 +331,8 @@ init_scores([H|T], Parent) -> [init_scores(H, Parent) | init_scores(T, Parent)].
 %% @doc transforms scored tree to normal tree which can be processed by mochiweb_html functions
 clean_scores(NodeIn) when is_binary(NodeIn) -> NodeIn;
 clean_scores({comment, _}) -> []; 
-clean_scores({E, _Score, A, Rest}) -> {E, A, clean_scores(Rest)};
-%clean_scores({E, Score, A, Rest}) -> {E, [{<<"readability">>, Score#score.readability}|A], clean_scores(Rest)}; %DEBUG - save score to attrs
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%clean_scores({E, _Score, A, Rest}) -> {E, A, clean_scores(Rest)};
+clean_scores({E, Score, A, Rest}) -> {E, [{<<"readability">>, Score#score.readability}|A], clean_scores(Rest)}; %DEBUG - save score to attrs
 clean_scores({E, A, Rest}) -> {E, A, clean_scores(Rest)};
 clean_scores([]) -> [];
 clean_scores([H|T]) -> [clean_scores(H) | clean_scores(T)]. 
