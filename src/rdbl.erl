@@ -528,9 +528,13 @@ score_list([H|T]) -> score_list(H) ++ score_list(T).
 %% @doc returns the  domain, and current context path. 
 %% example: url_context("http://www.some.domain.com/content/index.html) -> {"http://www.some.domain.com", "/content"}
 url_context(URL) ->
-    {Proto, _, Root, _Port, Path, _Query} = http_uri:parse(URL), 
-    Ctx = string:sub_string(Path, 1, string:rstr(Path,"/")),
-    {atom_to_list(Proto) ++ "://" ++ Root, Ctx}.
+    case http_uri:parse(URL) of
+    	{Proto, _, Root, _Port, Path, _Query} ->
+		    Ctx = string:sub_string(Path, 1, string:rstr(Path,"/")),
+			{atom_to_list(Proto) ++ "://" ++ Root, Ctx};
+		{error, _} ->
+			{URL, ""}
+	end.
 
 %% @spec full_url({string(), string()}, string()) -> string()
 %% @doc example: full_url(url_context("http://www.somewhere.in/time/page.html"), "img/pic.gif" -> "http://www.somewhere.in/time/img/pic.gif"
