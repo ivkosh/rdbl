@@ -4,7 +4,7 @@
 %% @doc 
 %% rdbl.erl - Erlang readability library.
 %% Extracts reasonable content and removes junk from html pages. 
-%% @reference See <a href="http://evl.me">Readabilizer</a> service for more information.
+%% @reference See <a href="http://www.evl.me">Readabilizer</a> service for more information.
 %% @end
 %%
 %% This libray is free software: you can redistribute it and/or modify
