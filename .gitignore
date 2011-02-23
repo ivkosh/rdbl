@@ -6,3 +6,6 @@ ebin/*
 .settings/*
 .project*
 TODO
+doc/*
+.eunit/*
+deps/*
