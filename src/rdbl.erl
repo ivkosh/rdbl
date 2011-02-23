@@ -22,7 +22,7 @@
 %%
 -module(rdbl).
 -author('Ivan Koshkin <ivan@koshkin.me>').
--vsn('0.4').
+-vsn('0.4.1').
 
 -export([simplify_url/1, simplify_url/2, simplify_file/2, simplify_page/1, simplify_page/3]).
 
