@@ -4,7 +4,7 @@ rdbl.erl - Erlang readability library
 This is Erlang library to extract reasonable content and remove junk from html pages. 
 Inspired by readability.js from arc90.
 
-Source is primary hosted at [github/ivkosh](https://github.com/ivkosh/rdbl).
+Source is primary hosted at [github.com/ivkosh](https://github.com/ivkosh/rdbl).
 My [Readabilizer service](http://evl.me/) is using this library to extract content from web pages.
 
 Licensing and author
@@ -37,7 +37,7 @@ Dependencies
 Library uses [mochiweb](https://github.com/mochi/mochiweb) html library to parse HTML-content (included).
 
 Only following files from mochiweb are needed:
- mochinum.erl
- mochiutf8.erl
- mochiweb_charref.erl
- mochiweb_html.erl
+mochinum.erl
+mochiutf8.erl
+mochiweb_charref.erl
+mochiweb_html.erl
