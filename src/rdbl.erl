@@ -124,6 +124,8 @@ extract_content_type(Tree, DefaultContentType) ->
 %% takes document contens (Body) and document context (Ctx, see url_context/1)
 %% returns simplified page as a string()
 %% @end
+
+% TODO: add more params here
 simplify_page(Body0, Ctx, DefaultContentType) ->
 	Body = re:replace(Body0, "&nbsp;", " ", [global]), % mochiweb_html:parse has a bug with &nbsp;, just hotfix
 	try mochiweb_html:parse(Body) of % parse() will not work if Body contains no html tags
