@@ -127,7 +127,14 @@ extract_content_type(Tree, DefaultContentType) ->
 
 % TODO: add more params here
 simplify_page(Body0, Ctx, DefaultContentType) ->
-	Body = re:replace(Body0, "&nbsp;", " ", [global]), % mochiweb_html:parse has a bug with &nbsp;, just hotfix
+	Body = 
+		re:replace(
+			re:replace(
+				re:replace(
+					Body0, 
+					"&nbsp;", " ", [global]), % mochiweb_html:parse has a bug with &nbsp;, just hotfix
+				"&laquo;", "«", [global]),
+			"&raquo;", "»", [global]),
 	try mochiweb_html:parse(Body) of % parse() will not work if Body contains no html tags
 		TreeOrig -> 
 			TitleStr = get_title(TreeOrig),
@@ -388,11 +395,12 @@ modify_score(Ref, [H|T], Score) -> [modify_score(Ref, H, Score) | modify_score(R
 %% @doc fetches url and returns its content as a string()
 %% @end
 fetch_page(Url) ->
+	% TODO: убрать вообще inets:start отсюда, пусть запускают предварительно (erl -s inets или в коде). Просто выдавать ошибку
+	% TODO: убрать функцию fetch_page из библиотеки в examples
 	inets:start(), % TODO: handle errors & not start if already started
 	ssl:start(),
 	% TODO: cache page - save to ets by url
-	% TODO: replace http:request to httpc:request
-	case http:request(get, {Url, [{"User-Agent", ?USER_AGENT}]}, [{autoredirect, true}, {relaxed, true}], [{sync, false}, {receiver, self()}]) of
+	case httpc:request(get, {Url, [{"User-Agent", ?USER_AGENT}]}, [{autoredirect, true}, {relaxed, true}], [{sync, false}, {receiver, self()}]) of
 		{ok, RequestId} ->
 			receive
 				{http, {RequestId, Result}} ->
@@ -587,3 +595,5 @@ full_url({Root, Context}, ComponentUrl) -> Root ++ Context ++ "/" ++ ComponentUr
 add_proto_if_none(U="http://"++_) -> U;
 add_proto_if_none(U="https://"++_) -> U;
 add_proto_if_none(U) -> "http://"++U.
+
+%%%% TODO: добавить сюда юнит-тесты (см как сделано в mochiweb)
