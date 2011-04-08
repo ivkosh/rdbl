@@ -129,12 +129,12 @@ extract_content_type(Tree, DefaultContentType) ->
 simplify_page(Body0, Ctx, DefaultContentType) ->
 	Body = 
 		re:replace(
-			re:replace(
-				re:replace(
+%			re:replace(                % не помогает с raquo/laquo, надо смотреть в mochiweb entity()
+%				re:replace(
 					Body0, 
 					"&nbsp;", " ", [global]), % mochiweb_html:parse has a bug with &nbsp;, just hotfix
-				"&laquo;", "«", [global]),
-			"&raquo;", "»", [global]),
+%				"&laquo;", "«", [global]),
+%			"&raquo;", "»", [global]), % TODO: &ndash; too
 	try mochiweb_html:parse(Body) of % parse() will not work if Body contains no html tags
 		TreeOrig -> 
 			TitleStr = get_title(TreeOrig),
