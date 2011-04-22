@@ -1,4 +1,5 @@
 .*.swp
+.swp
 *.beam
 *.tbl
 log/*
