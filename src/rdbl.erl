@@ -125,6 +125,9 @@ extract_content_type(Tree, DefaultContentType) ->
 %% returns simplified page as a string()
 %% @end
 
+% FIXME: % 
+% mochiweb преобразовывает &...; (&nbps; &ndash; etc) в unicode-символы из таблицы iso-8859-1 (http://www.w3schools.com/tags/ref_entities.asp) при просмотре их в кодировке cp1251 вместо корректных unicode-символов выводятся русские буквы.  Возможное решение - не давать mochiweb менять &...; в unicode либо при выводе менять уникодные символы из entity() назад в &...;
+
 % TODO: add more params here
 simplify_page(Body0, Ctx, DefaultContentType) ->
 	Body = 
