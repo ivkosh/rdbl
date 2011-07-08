@@ -183,8 +183,9 @@ simplify_page(Body0, Ctx, DefaultContentType) ->
 							[
 								{<<"title">>, [], TitleStr}, 
 								{<<"meta">>, [{<<"http-equiv">>, <<"content-type">>}, {<<"content">>, ContentType}], []},
-								{<<"meta">>, [{<<"name">>, <<"viewport">>}, {<<"content">>, <<"width=480">>}], []},
-								{<<"style">>, [{<<"type">>, <<"text/css">>}], [<<"h1 { display: block; width: 100%; border-bottom: 1px solid #333; font-size: 1.2em; }">>]}
+%								{<<"meta">>, [{<<"name">>, <<"viewport">>}, {<<"content">>, <<"width=480">>}], []},
+								{<<"meta">>, [{<<"name">>, <<"viewport">>}, {<<"content">>, <<"width=320, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">>}], []},
+								{<<"style">>, [{<<"type">>, <<"text/css">>}], [<<"h1 { display: block; width: 100%; border-bottom: 1px solid #333; font-size: 1.2em; }">>],[<<"body {font-family:Helvetica,Arial,Sans-Serif;font-size:16px;margin:0px auto 0px auto;width:95%;word-wrap:break-word;}">>]}
 							]
 					},
 					{
