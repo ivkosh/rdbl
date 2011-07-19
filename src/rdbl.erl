@@ -447,8 +447,8 @@ to_abs_url({<<"src">>, U}, Ctx)  -> {<<"src">>,  list_to_binary(full_url(Ctx, bi
 to_abs_url({<<"href">>, U}, Ctx) -> {<<"href">>, list_to_binary(full_url(Ctx, binary_to_list(U)))};
 to_abs_url(A, _) -> A.
 
-to_abs_url_browser_mode({<<"src">>, U}, Ctx)  -> {<<"src">>,  list_to_binary(?MY_API_PATH ++ full_url(Ctx, binary_to_list(U)))};
-to_abs_url_browser_mode({<<"href">>, U}, Ctx) -> {<<"href">>, list_to_binary(full_url(Ctx, binary_to_list(U)))};
+to_abs_url_browser_mode({<<"src">>, U}, Ctx)  -> {<<"src">>,  list_to_binary(full_url(Ctx, binary_to_list(U)))};
+to_abs_url_browser_mode({<<"href">>, U}, Ctx) -> {<<"href">>, list_to_binary(?MY_API_PATH ++ full_url(Ctx, binary_to_list(U)))};
 to_abs_url_browser_mode(A, _) -> A.
 
 %% @spec get_parent_ref(scored_html_node()) -> reference()
