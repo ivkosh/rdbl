@@ -22,7 +22,7 @@
 %%
 -module(rdbl).
 -author('Ivan Koshkin <ivan@koshkin.me>').
--vsn('0.4.1').
+-vsn('0.5.0').
 
 -export([simplify_url/1, simplify_url/2, simplify_file/2, simplify_page/1, simplify_page/3]).
 
@@ -47,6 +47,7 @@
 -define(RE_NEGATIVE, "\\b(comment|meta|footer|footnote)\\b").
 -define(RE_POSITIVE, "\\b(post|hentry|entry[-]?(content|text|body)?|article[-]?(content|text|body)?)\\b").
 -define(USER_AGENT, "Safari/5.0.3").
+-define(MY_API_PATH, "http://www.rdbl.me/?u=").
 
 %%
 %% @type scored_html_node() = {string(), score(), [html_attr()], [html_node() | string()]}
@@ -153,7 +154,7 @@ simplify_page(Body0, Ctx, DefaultContentType) ->
 				init_scores(
 					% converting urls in <a> and <img> to absolute urls
 					replace_node(
-						[{<<"a">>,   <<"a">>}, {<<"img">>, <<"img">>}],   fun(L) -> [ to_abs_url(El, Ctx) || El <- L ] end, 
+						[{<<"a">>,   <<"a">>}, {<<"img">>, <<"img">>}],   fun(L) -> [ to_abs_url_browser_mode(El, Ctx) || El <- L ] end, 
 						% MAYBE TODO: remove all elements from <a> except href
 						clean_html_tree({<<"div">>, [], TreeBody}) % обрамляем содержимое <body> <div>ом
 					)
@@ -445,6 +446,10 @@ get_title(Tree) ->
 to_abs_url({<<"src">>, U}, Ctx)  -> {<<"src">>,  list_to_binary(full_url(Ctx, binary_to_list(U)))};
 to_abs_url({<<"href">>, U}, Ctx) -> {<<"href">>, list_to_binary(full_url(Ctx, binary_to_list(U)))};
 to_abs_url(A, _) -> A.
+
+to_abs_url_browser_mode({<<"src">>, U}, Ctx)  -> {<<"src">>,  list_to_binary(?MY_API_PATH ++ full_url(Ctx, binary_to_list(U)))};
+to_abs_url_browser_mode({<<"href">>, U}, Ctx) -> {<<"href">>, list_to_binary(full_url(Ctx, binary_to_list(U)))};
+to_abs_url_browser_mode(A, _) -> A.
 
 %% @spec get_parent_ref(scored_html_node()) -> reference()
 get_parent_ref(Node) ->
