@@ -4,7 +4,7 @@
 %% @doc 
 %% rdbl.erl - Erlang readability library.
 %% Extracts reasonable content and removes junk from html pages. 
-%% @reference See <a href="http://www.evl.me">Readabilizer</a> service for more information.
+%% @reference See <a href="http://rdbl.koshkin.me">Readabilizer</a> service for more information.
 %% @end
 %%
 %% This libray is free software: you can redistribute it and/or modify
@@ -47,7 +47,7 @@
 -define(RE_NEGATIVE, "\\b(comment|meta|footer|footnote)\\b").
 -define(RE_POSITIVE, "\\b(post|hentry|entry[-]?(content|text|body)?|article[-]?(content|text|body)?)\\b").
 -define(USER_AGENT, "Safari/5.0.3").
--define(MY_API_PATH, "http://www.rdbl.me/?u=").
+-define(MY_API_PATH, "http://rdbl.koshkin.me/?u=").
 
 %%
 %% @type scored_html_node() = {string(), score(), [html_attr()], [html_node() | string()]}
