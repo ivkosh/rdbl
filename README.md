@@ -5,7 +5,7 @@ This is Erlang library to extract reasonable content and remove junk from html p
 Inspired by readability.js from arc90.
 
 Source is primary hosted at [github.com/ivkosh](https://github.com/ivkosh/rdbl).
-My [Readabilizer service](http://rdbl.koshkin.me/) is using this library to extract content from web pages.
+My Readabilizer service is using this library to extract content from web pages.
 
 Licensing and author
 --------------------
